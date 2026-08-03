@@ -12,35 +12,33 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
   const text = rawSms.trim();
   const lowerText = text.toLowerCase();
 
-  // 1. Detect Payment Method
+  // 1. Detect Payment Method using prioritized patterns
   let paymentMethod: PaymentMethod | null = null;
 
-  if (lowerText.includes("bkash")) {
-    paymentMethod = "bKash";
-  } else if (lowerText.includes("nagad")) {
-    paymentMethod = "Nagad";
-  } else if (lowerText.includes("rocket") || lowerText.includes("nexuspay")) {
-    paymentMethod = "Rocket";
-  } else if (lowerText.includes("upay")) {
-    paymentMethod = "Upay";
+  const patterns = [
+    { method: 'Rocket' as PaymentMethod, regex: /rocket|nexuspay|A\/C:\*\*\*|Tk.*received.*from.*A\/C/i },
+    { method: 'Nagad' as PaymentMethod, regex: /nagad|Money Received|Received Amount:? Tk|TxnID: [0-9A-Z]{8}/i },
+    { method: 'bKash' as PaymentMethod, regex: /bkash|You have received Tk|TrxID [0-9A-Z]{10}/i },
+    { method: 'Upay' as PaymentMethod, regex: /upay|UP[0-9]{8,10}/i }
+  ];
+
+  for (const p of patterns) {
+    if (p.regex.test(text)) {
+      paymentMethod = p.method;
+      break;
+    }
   }
 
-  // Fallback keyword matching
+  // Fallback keyword matching if patterns fail
   if (!paymentMethod) {
-    if (lowerText.includes("money received")) {
-        paymentMethod = "Nagad";
-    } else if (lowerText.includes("txnid") && (lowerText.includes("received amount") || lowerText.includes("cash in"))) {
+    if (lowerText.includes("money received") || lowerText.includes("nagad")) {
       paymentMethod = "Nagad";
-    } else if (lowerText.includes("tk.") && lowerText.includes("received from")) {
+    } else if (lowerText.includes("nexuspay") || lowerText.includes("rocket")) {
       paymentMethod = "Rocket";
-    } else if (lowerText.includes("tk") && lowerText.includes("received from a/c")) {
-      paymentMethod = "Rocket";
-    } else if (lowerText.includes("up123")) {
+    } else if (lowerText.includes("upay")) {
       paymentMethod = "Upay";
-    } else if (lowerText.includes("trxid")) {
-      paymentMethod = "bKash";
     } else {
-      paymentMethod = "bKash"; // Default MFS in BD
+      paymentMethod = "bKash";
     }
   }
 

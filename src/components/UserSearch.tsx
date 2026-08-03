@@ -17,13 +17,14 @@ import { PaymentRecord } from '../types';
 import { getProviderBrandColor } from '../utils/smsExtractor';
 
 interface UserSearchProps {
-  onSearch: (digits: string) => Promise<PaymentRecord[]>;
+  onSearch: (digits: string) => Promise<{ matched: PaymentRecord[], pending: any }>;
 }
 
 export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
   const [digits, setDigits] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchResults, setSearchResults] = useState<PaymentRecord[] | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<any>(null);
   const [searchedQuery, setSearchedQuery] = useState<string>('');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
 
@@ -66,13 +67,15 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
 
     try {
       const results = await onSearch(digits.trim());
-      setSearchResults(results);
-      if (results && results.length > 0) {
+      setSearchResults(results.matched);
+      setPendingRequest(results.pending);
+      if (results.matched && results.matched.length > 0) {
         triggerConfetti();
       }
     } catch (err) {
       console.error('Search error:', err);
       setSearchResults([]);
+      setPendingRequest(null);
     } finally {
       setIsLoading(false);
     }
@@ -271,18 +274,24 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
               );
             })
           ) : (
-            /* NOT FOUND CARD */
-            <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-rose-200 text-center space-y-4">
-              <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
-                <XCircle className="w-8 h-8" />
+            /* NOT FOUND / PENDING STATE */
+            <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-amber-200 text-center space-y-4">
+              <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
+                <Clock className="w-8 h-8 animate-pulse" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-extrabold text-slate-900">
-                  Payment Not Found
+                  Verification Request Created
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                  "No payment has been received using these last 3 digits ({searchedQuery}). Please contact the administrator."
+                  We haven't found a payment matching <b>"{searchedQuery}"</b> yet. We've created a pending request. If you've already sent the money, please wait 1-2 minutes for the system to process the SMS.
                 </p>
+                <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 flex items-center justify-center gap-2 mt-2">
+                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></div>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">
+                    Waiting for SMS Broadcast...
+                  </span>
+                </div>
               </div>
 
               {/* Contact Admin Options */}
