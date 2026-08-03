@@ -31,6 +31,7 @@ interface AdminDashboardProps {
     senderNumber: string;
     transactionId: string;
   }) => Promise<boolean>;
+  onClearAllPayments: () => Promise<boolean>;
   smsPermissionGranted: boolean;
   onToggleSmsPermission: () => void;
   firebaseConnected: boolean;
@@ -42,6 +43,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefresh,
   onDeletePayment,
   onAddManualPayment,
+  onClearAllPayments,
   smsPermissionGranted,
   onToggleSmsPermission,
   firebaseConnected,
@@ -50,6 +52,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState<boolean>(false);
+
 
   // Form states for manual entry
   const [newAmount, setNewAmount] = useState<string>('');
@@ -77,6 +81,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const success = await onDeletePayment(id);
     if (success) {
       setIsDeletingId(null);
+    }
+  };
+
+  const handleClearAllConfirm = async () => {
+    const success = await onClearAllPayments();
+    if (success) {
+      setShowClearAllConfirm(false);
     }
   };
 
@@ -163,6 +174,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
+          </button>
+
+          <button
+            onClick={() => setShowClearAllConfirm(true)}
+            className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-md shadow-rose-600/20 flex items-center gap-1.5"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Reset Data</span>
           </button>
         </div>
       </div>
@@ -409,6 +428,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="w-1/2 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLEAR ALL CONFIRMATION MODAL */}
+      {showClearAllConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-xs w-full p-5 space-y-4 text-center">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 text-base">Reset All Data?</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Are you absolutely sure? This will <strong>permanently delete all payment records</strong> from the database. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowClearAllConfirm(false)}
+                className="w-1/2 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearAllConfirm}
+                className="w-1/2 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
+              >
+                Yes, Delete All
               </button>
             </div>
           </div>

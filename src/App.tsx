@@ -111,6 +111,22 @@ export default function App() {
     }
   };
 
+  // Clear all payments
+  const handleClearAllPayments = async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/payments/clear-all', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        await handleRefresh();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Clear all request failed', err);
+      return false;
+    }
+  };
+
   // Parse SMS & Auto Save
   const handleParseAndSaveSMS = async (smsText: string): Promise<PaymentRecord | null> => {
     try {
@@ -164,6 +180,7 @@ export default function App() {
                   onRefresh={handleRefresh}
                   onDeletePayment={handleDeletePayment}
                   onAddManualPayment={handleAddManualPayment}
+                  onClearAllPayments={handleClearAllPayments}
                   smsPermissionGranted={smsPermissionGranted}
                   onToggleSmsPermission={() => setSmsPermissionGranted(!smsPermissionGranted)}
                   firebaseConnected={firebaseConnected}
