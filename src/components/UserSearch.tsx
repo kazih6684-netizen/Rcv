@@ -241,6 +241,18 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
                     </div>
 
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-slate-600 border-b border-slate-200 pb-2">
+                        <span className="font-semibold flex items-center gap-1">
+                          <CreditCard className="w-3.5 h-3.5 text-slate-400" /> Sender / Account
+                        </span>
+                        <span className="font-bold text-slate-900">{record.senderNumber} (Last digits: {record.last3DigitsSender})</span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-600 border-b border-slate-200 pb-2">
+                        <span className="font-semibold flex items-center gap-1">
+                          <ShieldAlert className="w-3.5 h-3.5 text-slate-400" /> Transaction ID
+                        </span>
+                        <span className="font-bold text-slate-900">{record.transactionId}</span>
+                      </div>
                       <div className="flex justify-between items-center text-slate-600">
                         <span className="font-semibold flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" /> Date & Time

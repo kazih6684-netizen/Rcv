@@ -35,34 +35,40 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
 
   // 2. Extract Amount
   // Matches: Tk 500, Tk. 750.00, Tk.750.00, Tk 1,200.00, Amount: Tk 250.00
-  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*Tk)\s*:?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
+  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*(?:Tk)?|Amount:?\s*(?:Tk|BDT)?|BDT)\s*:?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
   const amountMatch = text.match(amountRegex);
-
+  
   let amount = 0;
   if (amountMatch && amountMatch[1]) {
     const cleanAmountStr = amountMatch[1].replace(/,/g, '');
     amount = parseFloat(cleanAmountStr) || 0;
   }
 
-  // 3. Extract Sender Phone Number
+  // 3. Extract Sender Phone Number or Name
   // Matches Bangladeshi mobile numbers: 013, 014, 015, 016, 017, 018, 019 followed by 8 digits
   const phoneRegex = /(?:from|Sender:?|number:?)\s*(01[3-9][0-9]{8})/i;
   const phoneMatch = text.match(phoneRegex);
   
+  // For NPSB or bank transfers, it might be a name or account, e.g., "from Yasin"
+  const fromNameRegex = /(?:from|Sender:?)\s+([A-Za-z0-9\s]+?)(?:\.|,|\s(?:Fee|Balance|Txn|Trx|at|Date|Tk|successful))/i;
+  const fromNameMatch = text.match(fromNameRegex);
+
   // Alternative direct phone regex anywhere in text
   const directPhoneRegex = /\b(01[3-9][0-9]{8})\b/;
   const fallbackPhoneMatch = text.match(directPhoneRegex);
 
   let senderNumber = '01700000000';
   if (phoneMatch && phoneMatch[1]) {
-    senderNumber = phoneMatch[1];
+    senderNumber = phoneMatch[1].trim();
+  } else if (fromNameMatch && fromNameMatch[1] && fromNameMatch[1].trim().length > 0) {
+    senderNumber = fromNameMatch[1].trim();
   } else if (fallbackPhoneMatch && fallbackPhoneMatch[1]) {
-    senderNumber = fallbackPhoneMatch[1];
+    senderNumber = fallbackPhoneMatch[1].trim();
   }
 
   // 4. Extract Transaction ID
   // Matches TrxID 9A8B7C6D5E, TxnID: 7X8Y9Z0A, TrxID UP12345678
-  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]+)/i;
+  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|ID:?)\s*:?\s*([A-Za-z0-9]+)/i;
   const trxMatch = text.match(trxRegex);
 
   let transactionId = '';
