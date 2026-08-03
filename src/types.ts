@@ -10,28 +10,9 @@ export interface PaymentRecord {
   transactionId: string;
   dateTime: string;
   rawSms: string;
+  message?: string;
   status: 'Success' | 'Pending' | 'Failed';
   createdAt: string;
-}
-
-export interface PendingPaymentRequest {
-  id: string;
-  amount: number;
-  last3Digits: string; // The digits user entered to search
-  status: 'Pending' | 'Success' | 'Failed';
-  createdAt: string;
-  matchedPaymentId?: string;
-  paymentMethod?: PaymentMethod;
-  senderNumber?: string;
-  transactionId?: string;
-}
-
-export interface RawSmsLog {
-  id: string;
-  smsText: string;
-  receivedAt: string;
-  isProcessed: boolean;
-  matchedRequestId?: string;
 }
 
 export interface SMSParseResult {

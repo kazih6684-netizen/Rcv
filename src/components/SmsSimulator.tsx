@@ -134,6 +134,7 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
               key={`tmpl-${idx}`}
               onClick={() => {
                 setRawSmsInput(tmpl.sms);
+                handleSimulateSMS(tmpl.sms);
               }}
               className="p-3 text-left rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition group space-y-1"
             >

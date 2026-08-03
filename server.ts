@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { parsePaymentSMS } from './src/utils/smsExtractor.js';
 import { PaymentRecord, PaymentStats } from './src/types.js';
 
-import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, updateDoc } from './src/firebase.js';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from './src/firebase.js';
 
 const app = express();
 const PORT = 3000;
@@ -28,177 +28,10 @@ async function fetchAllPayments(): Promise<PaymentRecord[]> {
   }
 }
 
-async function fetchAllPendingRequests(): Promise<any[]> {
-  try {
-    const q = query(collection(db, 'pending_requests'), orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const requests: any[] = [];
-    querySnapshot.forEach((doc) => {
-      requests.push({ id: doc.id, ...doc.data() });
-    });
-    return requests;
-  } catch (err) {
-    console.error("Error fetching pending requests", err);
-    return [];
-  }
-}
-
-async function fetchAllRawSmsLogs(): Promise<any[]> {
-  try {
-    const q = query(collection(db, 'raw_sms_logs'), orderBy('receivedAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const logs: any[] = [];
-    querySnapshot.forEach((doc) => {
-      logs.push({ id: doc.id, ...doc.data() });
-    });
-    return logs;
-  } catch (err) {
-    console.error("Error fetching raw sms logs", err);
-    return [];
-  }
-}
-
-// Matching logic
-async function processMatching() {
-  const pendingRequests = await fetchAllPendingRequests();
-  const activeRequests = pendingRequests.filter(r => r.status === 'Pending');
-  
-  if (activeRequests.length === 0) return;
-
-  const rawLogs = await fetchAllRawSmsLogs();
-  const unprocessedLogs = rawLogs.filter(l => !l.isProcessed);
-
-  for (const log of unprocessedLogs) {
-    for (const request of activeRequests) {
-      const queryStr = request.last3Digits.trim();
-      // Check if digits are in the SMS
-      if (log.smsText.includes(queryStr)) {
-        const parseResult = parsePaymentSMS(log.smsText);
-        if (parseResult.success) {
-          // Found a match!
-          await updateDoc(doc(db, 'pending_requests', request.id), {
-            status: 'Success',
-            matchedPaymentId: log.id,
-            paymentMethod: parseResult.paymentMethod,
-            senderNumber: parseResult.senderNumber,
-            transactionId: parseResult.transactionId,
-            matchedAt: new Date().toISOString(),
-          });
-          
-          console.log(`Matched request ${request.id} with SMS ${log.id}`);
-          
-          // We also create a real payment record
-          const newPaymentData = {
-            amount: parseResult.amount || request.amount || 0,
-            paymentMethod: parseResult.paymentMethod || 'bKash',
-            last3DigitsTrx: parseResult.last3DigitsTrx || '000',
-            last3DigitsSender: parseResult.last3DigitsSender || '000',
-            senderNumber: parseResult.senderNumber || '01700000000',
-            transactionId: parseResult.transactionId || 'TRXUNKNOWN',
-            dateTime: parseResult.dateTime || new Date().toLocaleString(),
-            rawSms: log.smsText,
-            status: 'Success',
-            createdAt: new Date().toISOString(),
-          };
-          
-          await addDoc(collection(db, 'payments'), newPaymentData);
-          
-          // Mark raw SMS as processed
-          await updateDoc(doc(db, 'raw_sms_logs', log.id), {
-            isProcessed: true,
-            matchedRequestId: request.id
-          });
-        }
-      }
-    }
-  }
-}
-
-// MacroDroid Webhook Integration Endpoint
-app.post('/api/sms-webhook', async (req, res) => {
-  const { sms_message, from, timestamp } = req.body;
-  const smsText = sms_message || req.body.smsText || req.body.text; // Support multiple field names
-
-  if (!smsText) {
-    return res.status(400).json({ success: false, message: 'No SMS text provided' });
-  }
-
-  try {
-    // 1. Save Raw SMS Log
-    const logRef = await addDoc(collection(db, 'raw_sms_logs'), {
-      smsText,
-      sender: from || 'Unknown',
-      receivedAt: timestamp || new Date().toISOString(),
-      isProcessed: false,
-      rawPayload: req.body
-    });
-
-    // 2. Run Matching Logic
-    const matchFound = await processMatchingForSms(smsText, logRef.id);
-
-    res.json({ 
-      success: true, 
-      message: 'SMS received and processed', 
-      logId: logRef.id,
-      matched: matchFound 
-    });
-  } catch (err) {
-    console.error("Webhook error:", err);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
+// Health endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', serverTime: new Date().toISOString() });
 });
-
-// Refined matching logic for specific SMS
-async function processMatchingForSms(smsText: string, logId: string): Promise<boolean> {
-  const pendingRequests = await fetchAllPendingRequests();
-  const activeRequests = pendingRequests.filter(r => r.status === 'Pending');
-  
-  if (activeRequests.length === 0) return false;
-
-  let matched = false;
-  for (const request of activeRequests) {
-    const queryStr = request.last3Digits.trim();
-    
-    // Pattern Matching for Digits in SMS
-    if (smsText.includes(queryStr)) {
-      const parseResult = parsePaymentSMS(smsText);
-      
-      // Even if parser fails partially, we try to match by digits if the user is waiting
-      if (parseResult.success) {
-        // Update Request
-        await updateDoc(doc(db, 'pending_requests', request.id), {
-          status: 'Success',
-          matchedPaymentId: logId,
-          paymentMethod: parseResult.paymentMethod,
-          senderNumber: parseResult.senderNumber,
-          transactionId: parseResult.transactionId,
-          matchedAt: new Date().toISOString(),
-        });
-
-        // Create Payment Record
-        await addDoc(collection(db, 'payments'), {
-          amount: parseResult.amount || request.amount || 0,
-          paymentMethod: parseResult.paymentMethod,
-          transactionId: parseResult.transactionId,
-          senderNumber: parseResult.senderNumber,
-          rawSms: smsText,
-          status: 'Success',
-          createdAt: new Date().toISOString(),
-        });
-
-        // Mark Log as Processed
-        await updateDoc(doc(db, 'raw_sms_logs', logId), {
-          isProcessed: true,
-          matchedRequestId: request.id
-        });
-
-        matched = true;
-        break; // Stop after first match
-      }
-    }
-  }
-  return matched;
-}
 
 // Get all payments
 app.get('/api/payments', async (req, res) => {
@@ -214,9 +47,6 @@ app.post('/api/payments/search', async (req, res) => {
   }
   const queryStr = digits.trim().toLowerCase();
   
-  // Trigger matching logic before search to ensure we catch recent SMS
-  await processMatching();
-
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
     return (
@@ -228,35 +58,11 @@ app.post('/api/payments/search', async (req, res) => {
       pay.senderNumber.toLowerCase().includes(queryStr)
     );
   });
-  
-  // Also check if there's a pending request that hasn't been matched yet
-  let pendingRequest = null;
-  if (matched.length === 0) {
-      // Create a pending request if not found
-      const pendingQ = query(collection(db, 'pending_requests'), orderBy('createdAt', 'desc'));
-      const pendingSnapshot = await getDocs(pendingQ);
-      const existing = [];
-      pendingSnapshot.forEach(doc => existing.push({id: doc.id, ...doc.data()}));
-      
-      const found = existing.find(r => r.last3Digits === queryStr && r.status === 'Pending');
-      if (!found) {
-        const docRef = await addDoc(collection(db, 'pending_requests'), {
-            last3Digits: queryStr,
-            status: 'Pending',
-            createdAt: new Date().toISOString()
-        });
-        pendingRequest = { id: docRef.id, last3Digits: queryStr, status: 'Pending' };
-      } else {
-        pendingRequest = found;
-      }
-  }
-
   res.json({
     success: true,
     query: queryStr,
     count: matched.length,
     matchedPayments: matched,
-    pendingRequest: pendingRequest,
   });
 });
 
@@ -266,30 +72,9 @@ app.post('/api/sms/parse', async (req, res) => {
   if (!smsText || typeof smsText !== 'string') {
     return res.status(400).json({ success: false, message: 'SMS text is required in smsText or sms_message field' });
   }
-
-  // 1. Save Raw SMS first as requested
-  try {
-    await addDoc(collection(db, 'raw_sms_logs'), {
-      smsText: smsText,
-      receivedAt: new Date().toISOString(),
-      isProcessed: false
-    });
-  } catch (err) {
-    console.error("Error saving raw sms", err);
-  }
-
-  // 2. Trigger Matching
-  await processMatching();
-
-  // 3. For backward compatibility/immediate feedback in simulator, still return parse result
   const parseResult = parsePaymentSMS(smsText);
   if (!parseResult.success) {
-    // If it's a raw SMS that we couldn't parse, we still return success but note it's logged
-    return res.json({ 
-        success: true, 
-        message: 'Raw SMS received and logged. Matching in progress.',
-        isRaw: true
-    });
+    return res.status(400).json({ success: false, message: parseResult.error });
   }
   
   const newPaymentData = {
@@ -321,7 +106,7 @@ app.post('/api/sms/parse', async (req, res) => {
 
 // Create payment manually by admin
 app.post('/api/payments', async (req, res) => {
-  const { amount, paymentMethod, senderNumber, transactionId } = req.body;
+  const { amount, paymentMethod, senderNumber, transactionId, message } = req.body;
   if (!amount || !paymentMethod || !senderNumber || !transactionId) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
@@ -337,6 +122,7 @@ app.post('/api/payments', async (req, res) => {
     transactionId: cleanTrx,
     dateTime: `${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
     rawSms: `Manual Payment Entry: Tk ${amount} from ${cleanSender}. TrxID: ${cleanTrx}`,
+    message: message || '',
     status: 'Success',
     createdAt: new Date().toISOString(),
   };
@@ -346,6 +132,17 @@ app.post('/api/payments', async (req, res) => {
     res.json({ success: true, payment: { id: docRef.id, ...newPaymentData } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to save to database' });
+  }
+});
+
+// Delete single payment
+app.delete('/api/payments/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await deleteDoc(doc(db, 'payments', id));
+    res.json({ success: true, message: 'Payment deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to delete payment' });
   }
 });
 
@@ -361,17 +158,6 @@ app.delete('/api/payments/clear-all', async (req, res) => {
     res.json({ success: true, message: 'All payments cleared' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to clear payments' });
-  }
-});
-
-// Delete single payment
-app.delete('/api/payments/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    await deleteDoc(doc(db, 'payments', id));
-    res.json({ success: true, message: 'Payment deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to delete payment' });
   }
 });
 

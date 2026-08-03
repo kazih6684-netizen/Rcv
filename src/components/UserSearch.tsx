@@ -17,14 +17,13 @@ import { PaymentRecord } from '../types';
 import { getProviderBrandColor } from '../utils/smsExtractor';
 
 interface UserSearchProps {
-  onSearch: (digits: string) => Promise<{ matched: PaymentRecord[], pending: any }>;
+  onSearch: (digits: string) => Promise<PaymentRecord[]>;
 }
 
 export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
   const [digits, setDigits] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchResults, setSearchResults] = useState<PaymentRecord[] | null>(null);
-  const [pendingRequest, setPendingRequest] = useState<any>(null);
   const [searchedQuery, setSearchedQuery] = useState<string>('');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
 
@@ -67,15 +66,13 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
 
     try {
       const results = await onSearch(digits.trim());
-      setSearchResults(results.matched);
-      setPendingRequest(results.pending);
-      if (results.matched && results.matched.length > 0) {
+      setSearchResults(results);
+      if (results && results.length > 0) {
         triggerConfetti();
       }
     } catch (err) {
       console.error('Search error:', err);
       setSearchResults([]);
-      setPendingRequest(null);
     } finally {
       setIsLoading(false);
     }
@@ -262,6 +259,12 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
                         </span>
                         <span className="font-bold text-slate-900">{record.dateTime}</span>
                       </div>
+                      {record.message && (
+                        <div className="pt-2 border-t border-slate-200 mt-1">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Admin Note</span>
+                          <p className="text-xs text-slate-700 italic font-medium">"{record.message}"</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -274,53 +277,38 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
               );
             })
           ) : (
-            /* NOT FOUND / PENDING STATE */
+            /* NOT FOUND CARD */
             <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-rose-200 text-center space-y-4">
               <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
                 <XCircle className="w-8 h-8" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                <h3 className="text-lg font-extrabold text-slate-900">
                   Payment Not Found
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                  We haven't received a payment matching <b>"{searchedQuery}"</b> yet.
+                  "No payment has been received using these last 3 digits ({searchedQuery}). Please contact the administrator."
                 </p>
-                
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 flex flex-col items-center justify-center gap-1 mt-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></div>
-                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">
-                      Verification Request Active
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-amber-600 font-medium">
-                    If you just sent money, please wait 1 minute for SMS processing.
-                  </p>
-                </div>
               </div>
 
               {/* Contact Admin Options */}
-              <div className="pt-2 space-y-3">
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Contact for Support</p>
-                <div className="grid grid-cols-1 gap-2">
-                  <a
-                    href={`https://wa.me/8801919012426?text=Hello%20Admin,%20I%20sent%20a%20payment%20with%20last%203%20digits%20(${searchedQuery}).%20It%20is%20not%20showing%20as%20verified.`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#128C7E] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 transition-all active:scale-95"
-                  >
-                    <MessageCircle className="w-5 h-5" />
-                    <span>WhatsApp: 01919012426</span>
-                  </a>
-                  <a
-                    href="tel:+8801919012426"
-                    className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition"
-                  >
-                    <PhoneCall className="w-4 h-4 text-slate-500" />
-                    <span>Call Helpline: 01919012426</span>
-                  </a>
-                </div>
+              <div className="pt-2 space-y-2">
+                <a
+                  href={`https://wa.me/8801919012426?text=Hello%20Admin,%20I%20sent%20a%20payment%20with%20last%203%20digits%20(${searchedQuery}).%20Please%20verify.`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Contact Admin on WhatsApp</span>
+                </a>
+                <a
+                  href="tel:+8801919012426"
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-2 transition"
+                >
+                  <PhoneCall className="w-4 h-4 text-slate-500" />
+                  <span>Direct Helpline (01919012426)</span>
+                </a>
               </div>
             </div>
           )}
