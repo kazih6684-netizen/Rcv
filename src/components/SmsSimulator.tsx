@@ -29,25 +29,6 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [lastExtracted, setLastExtracted] = useState<PaymentRecord | null>(null);
   const [logs, setLogs] = useState<Array<{ id: string; time: string; text: string; success: boolean }>>([]);
-  const [autoSimulate, setAutoSimulate] = useState<boolean>(false);
-
-  // Auto-simulation interval
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (autoSimulate) {
-      interval = setInterval(() => {
-        const randomIndex = Math.floor(Math.random() * SAMPLE_SMS_TEMPLATES.length);
-        const template = SAMPLE_SMS_TEMPLATES[randomIndex];
-        // Modify digits slightly to generate new records
-        const randomDigits = Math.floor(100 + Math.random() * 900).toString();
-        const randomTrx = Math.random().toString(36).substring(2, 8).toUpperCase() + randomDigits;
-        const modifiedSms = template.sms.replace(/02\/08\/2026/g, new Date().toLocaleDateString('en-GB')).replace(/9A8B7C650/g, randomTrx);
-
-        handleSimulateSMS(modifiedSms);
-      }, 12000);
-    }
-    return () => clearInterval(interval);
-  }, [autoSimulate]);
 
   const handleSimulateSMS = async (smsTextToParse?: string) => {
     const text = smsTextToParse || rawSmsInput;
@@ -103,27 +84,6 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
               Simulates incoming payment SMS from bKash, Nagad, Rocket, or Upay. Automatically parses fields and syncs with Firebase in real time.
             </p>
           </div>
-
-          <button
-            onClick={() => setAutoSimulate(!autoSimulate)}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition ${
-              autoSimulate
-                ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 animate-pulse'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-            }`}
-          >
-            {autoSimulate ? (
-              <>
-                <Pause className="w-4 h-4 fill-slate-950" />
-                <span>Stop Auto SMS</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 fill-slate-950" />
-                <span>Auto-Simulate Live SMS</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 
