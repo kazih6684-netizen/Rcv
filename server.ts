@@ -1,14 +1,11 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { parsePaymentSMS } from './src/utils/smsExtractor.js';
 import { PaymentRecord, PaymentStats } from './src/types.js';
 
 import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from './src/firebase.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
