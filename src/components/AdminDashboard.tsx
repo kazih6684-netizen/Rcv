@@ -118,10 +118,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const exportCSV = () => {
-    const headers = ['ID,Amount,Method,Last3Trx,Last3Sender,SenderNumber,TransactionID,DateTime,Status\n'];
+    const headers = ['ID,Amount,Method,Type,Last3Trx,Last3Sender,SenderNumber,TransactionID,Reference,Balance,DateTime,Status,Message\n'];
     const rows = payments.map(
       (p) =>
-        `"${p.id}","${p.amount}","${p.paymentMethod}","${p.last3DigitsTrx}","${p.last3DigitsSender}","${p.senderNumber}","${p.transactionId}","${p.dateTime}","${p.status}"\n`
+        `"${p.id}","${p.amount}","${p.paymentMethod}","${p.transactionType}","${p.last3DigitsTrx}","${p.last3DigitsSender}","${p.senderNumber}","${p.transactionId}","${p.reference}","${p.balance}","${p.dateTime}","${p.status}","${p.message || ''}"\n`
     );
     const blob = new Blob([...headers, ...rows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -354,11 +354,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="p-3.5">Method</th>
+                  <th className="p-3.5">Type</th>
                   <th className="p-3.5">Amount</th>
-                  <th className="p-3.5">Last 3 Digits</th>
+                  <th className="p-3.5">Ref</th>
                   <th className="p-3.5">Transaction ID</th>
                   <th className="p-3.5">Sender Mobile</th>
-                  <th className="p-3.5">Commit Message</th>
                   <th className="p-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -374,21 +374,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {p.paymentMethod}
                         </span>
                       </td>
+                      <td className="p-3.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 px-2 py-0.5 bg-slate-100 rounded">
+                          {p.transactionType}
+                        </span>
+                      </td>
                       <td className="p-3.5 font-extrabold text-slate-900">
                         ৳ {p.amount.toLocaleString('en-BD')}
                       </td>
-                      <td className="p-3.5">
-                        <div className="flex gap-1.5 font-mono font-bold">
-                          <span className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
-                            Trx: {p.last3DigitsTrx}
-                          </span>
-                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
-                            Ph: {p.last3DigitsSender}
-                          </span>
-                        </div>
+                      <td className="p-3.5 text-xs text-slate-500 italic">
+                        {p.reference}
                       </td>
                       <td className="p-3.5 font-mono text-slate-700 font-bold">{p.transactionId}</td>
-                      <td className="p-3.5 font-mono text-slate-700">{p.senderNumber}</td>
+                      <td className="p-3.5 font-mono text-slate-700 text-xs">
+                        {p.senderNumber}
+                      </td>
                       <td className="p-3.5">
                         <div className="max-w-[150px] truncate text-xs text-slate-500 italic" title={p.message}>
                           {p.message || <span className="text-slate-300">No message</span>}

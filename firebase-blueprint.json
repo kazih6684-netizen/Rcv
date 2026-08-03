@@ -1,12 +1,34 @@
 {
-  "collections": [
-    {
-      "collectionId": "payments",
-      "description": "Stores all incoming payments.",
-      "securityRules": {
-        "read": "true",
-        "write": "true"
-      }
+  "entities": {
+    "Payment": {
+      "title": "Payment",
+      "description": "A verified payment transaction from an MFS provider.",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number", "description": "Transaction amount in BDT" },
+        "paymentMethod": { "type": "string", "enum": ["bKash", "Nagad", "Rocket", "Upay"] },
+        "transactionType": { "type": "string", "enum": ["Received", "Cash In", "Deposit", "NPSB", "Manual"] },
+        "last3DigitsTrx": { "type": "string", "maxLength": 3 },
+        "last3DigitsSender": { "type": "string", "maxLength": 11 },
+        "senderNumber": { "type": "string", "maxLength": 20 },
+        "reference": { "type": "string", "maxLength": 50 },
+        "transactionId": { "type": "string", "maxLength": 32 },
+        "balance": { "type": "number" },
+        "dateTime": { "type": "string" },
+        "rawSms": { "type": "string", "maxLength": 1000 },
+        "smsHash": { "type": "string", "maxLength": 32 },
+        "message": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["Success", "Pending", "Failed"] },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["amount", "paymentMethod", "transactionId", "smsHash", "verified", "createdAt"]
     }
-  ]
+  },
+  "firestore": {
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Collection of all verified payments."
+    }
+  }
 }
