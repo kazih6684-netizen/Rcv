@@ -19,7 +19,7 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
     paymentMethod = "bKash";
   } else if (lowerText.includes("nagad")) {
     paymentMethod = "Nagad";
-  } else if (lowerText.includes("rocket")) {
+  } else if (lowerText.includes("rocket") || lowerText.includes("nexuspay")) {
     paymentMethod = "Rocket";
   } else if (lowerText.includes("upay")) {
     paymentMethod = "Upay";
@@ -32,6 +32,8 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
     } else if (lowerText.includes("txnid") && (lowerText.includes("received amount") || lowerText.includes("cash in"))) {
       paymentMethod = "Nagad";
     } else if (lowerText.includes("tk.") && lowerText.includes("received from")) {
+      paymentMethod = "Rocket";
+    } else if (lowerText.includes("tk") && lowerText.includes("received from a/c")) {
       paymentMethod = "Rocket";
     } else if (lowerText.includes("up123")) {
       paymentMethod = "Upay";
@@ -56,7 +58,7 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
   // 3. Extract Sender Phone Number or Name
   let senderNumber = '01700000000';
   const m1 = text.match(/(?:from|Sender:?|number:?).*?\b(01[3-9][0-9Xx*]{8})\b/i);
-  const m2 = text.match(/(?:from|Sender:?|number:?|A\/C).*?(?:\s|^)([*Xx]{2,6}[0-9]{3,4})\b/i);
+  const m2 = text.match(/(?:from|Sender:?|number:?|A\/C).*?(?:\s|^|:)([*Xx]{2,6}[0-9]{3,4})\b/i);
   const nameMatch = text.match(/(?:from|Sender:?)\s+([A-Za-z0-9\s]+?)(?:\.|,|\s(?:Fee|Balance|Txn|Trx|at|Date|Tk|successful|through))/i);
 
   if (m1 && m1[1]) {
@@ -175,6 +177,11 @@ export const SAMPLE_SMS_TEMPLATES = [
     provider: 'Rocket' as PaymentMethod,
     label: 'Rocket Cash In (Tk 750)',
     sms: 'Tk.750.00 received from 01611223456. TxnID: 3B4C5D456. Date:02-AUG-26 15:12.',
+  },
+  {
+    provider: 'Rocket' as PaymentMethod,
+    label: 'Rocket Received (Tk 200) - NexusPay',
+    sms: 'Tk200.00 received from A/C:***057 Fee:Tk0, Your A/C Balance: Tk12,256.92 TxnId:6791724661 Date:31-JUL-26 09:26:07 pm. Download https://bit.ly/nexuspay',
   },
   {
     provider: 'Upay' as PaymentMethod,

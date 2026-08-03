@@ -68,7 +68,7 @@ app.post('/api/payments/search', async (req, res) => {
 
 // Parse SMS & Auto-Add to DB
 app.post('/api/sms/parse', async (req, res) => {
-  const smsText = req.body.smsText || req.body.sms_message;
+  const smsText = req.body.smsText || req.body.sms_message || req.body.body || req.body.message || req.body.text;
   if (!smsText || typeof smsText !== 'string') {
     return res.status(400).json({ success: false, message: 'SMS text is required in smsText or sms_message field' });
   }
