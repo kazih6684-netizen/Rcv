@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, where, limit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 const firebaseConfig = {
   projectId: "gen-lang-client-0341200272",
@@ -14,4 +14,4 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app, "ai-studio-unityearningpaym-5cbe4b17-24a7-4c1e-873f-c99afad44c93");
 
-export { app, db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, where, limit };
+export { app, db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot };

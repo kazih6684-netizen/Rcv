@@ -30,7 +30,6 @@ interface AdminDashboardProps {
     paymentMethod: PaymentMethod;
     senderNumber: string;
     transactionId: string;
-    message?: string;
   }) => Promise<boolean>;
   onClearAllPayments: () => Promise<boolean>;
   smsPermissionGranted: boolean;
@@ -61,7 +60,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newMethod, setNewMethod] = useState<PaymentMethod>('bKash');
   const [newSender, setNewSender] = useState<string>('');
   const [newTrx, setNewTrx] = useState<string>('');
-  const [newMessage, setNewMessage] = useState<string>('');
   const [isAdding, setIsAdding] = useState<boolean>(false);
 
   // Filter logic
@@ -75,7 +73,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       p.last3DigitsSender.toLowerCase().includes(q) ||
       p.transactionId.toLowerCase().includes(q) ||
       p.senderNumber.toLowerCase().includes(q) ||
-      (p.message && p.message.toLowerCase().includes(q)) ||
       p.amount.toString().includes(q);
     return matchesProvider && matchesQuery;
   });
@@ -104,7 +101,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       paymentMethod: newMethod,
       senderNumber: newSender.trim(),
       transactionId: newTrx.trim(),
-      message: newMessage.trim(),
     });
 
     if (success) {
@@ -112,16 +108,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setNewAmount('');
       setNewSender('');
       setNewTrx('');
-      setNewMessage('');
     }
     setIsAdding(false);
   };
 
   const exportCSV = () => {
-    const headers = ['ID,Amount,Method,Type,Last3Trx,Last3Sender,SenderNumber,TransactionID,Reference,Balance,DateTime,Status,Message\n'];
+    const headers = ['ID,Amount,Method,Last3Trx,Last3Sender,SenderNumber,TransactionID,DateTime,Status\n'];
     const rows = payments.map(
       (p) =>
-        `"${p.id}","${p.amount}","${p.paymentMethod}","${p.transactionType}","${p.last3DigitsTrx}","${p.last3DigitsSender}","${p.senderNumber}","${p.transactionId}","${p.reference}","${p.balance}","${p.dateTime}","${p.status}","${p.message || ''}"\n`
+        `"${p.id}","${p.amount}","${p.paymentMethod}","${p.last3DigitsTrx}","${p.last3DigitsSender}","${p.senderNumber}","${p.transactionId}","${p.dateTime}","${p.status}"\n`
     );
     const blob = new Blob([...headers, ...rows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -354,11 +349,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="p-3.5">Method</th>
-                  <th className="p-3.5">Type</th>
                   <th className="p-3.5">Amount</th>
-                  <th className="p-3.5">Ref</th>
+                  <th className="p-3.5">Last 3 Digits</th>
                   <th className="p-3.5">Transaction ID</th>
                   <th className="p-3.5">Sender Mobile</th>
+                  <th className="p-3.5">Date & Time</th>
                   <th className="p-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -374,26 +369,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {p.paymentMethod}
                         </span>
                       </td>
-                      <td className="p-3.5">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 px-2 py-0.5 bg-slate-100 rounded">
-                          {p.transactionType}
-                        </span>
-                      </td>
                       <td className="p-3.5 font-extrabold text-slate-900">
                         ৳ {p.amount.toLocaleString('en-BD')}
                       </td>
-                      <td className="p-3.5 text-xs text-slate-500 italic">
-                        {p.reference}
-                      </td>
-                      <td className="p-3.5 font-mono text-slate-700 font-bold">{p.transactionId}</td>
-                      <td className="p-3.5 font-mono text-slate-700 text-xs">
-                        {p.senderNumber}
-                      </td>
                       <td className="p-3.5">
-                        <div className="max-w-[150px] truncate text-xs text-slate-500 italic" title={p.message}>
-                          {p.message || <span className="text-slate-300">No message</span>}
+                        <div className="flex gap-1.5 font-mono font-bold">
+                          <span className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
+                            Trx: {p.last3DigitsTrx}
+                          </span>
+                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                            Ph: {p.last3DigitsSender}
+                          </span>
                         </div>
                       </td>
+                      <td className="p-3.5 font-mono text-slate-700 font-bold">{p.transactionId}</td>
+                      <td className="p-3.5 font-mono text-slate-700">{p.senderNumber}</td>
+                      <td className="p-3.5 text-slate-500 text-xs">{p.dateTime}</td>
                       <td className="p-3.5 text-right">
                         <button
                           onClick={() => setIsDeletingId(p.id)}
@@ -542,17 +533,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={newTrx}
                   onChange={(e) => setNewTrx(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Commit Message (Optional)</label>
-                <textarea
-                  placeholder="Reason for manual entry or special note..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
-                  rows={2}
                 />
               </div>
 

@@ -52,12 +52,12 @@ export default function App() {
   };
 
   // Search API Call
-  const handleSearch = async (queryStr: string): Promise<PaymentRecord[]> => {
+  const handleSearch = async (digits: string): Promise<PaymentRecord[]> => {
     try {
       const res = await fetch('/api/payments/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryStr }),
+        body: JSON.stringify({ digits }),
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.matchedPayments)) {
@@ -92,7 +92,6 @@ export default function App() {
     paymentMethod: PaymentMethod;
     senderNumber: string;
     transactionId: string;
-    message?: string;
   }): Promise<boolean> => {
     try {
       const res = await fetch('/api/payments', {

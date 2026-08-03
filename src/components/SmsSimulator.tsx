@@ -194,12 +194,8 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
                 <span className="font-black text-emerald-700 uppercase">✓ Saved to Database</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Method / Type:</span>
-                <span className="font-bold text-slate-900">{lastExtracted.paymentMethod} / {lastExtracted.transactionType}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Reference:</span>
-                <span className="font-bold text-slate-900">{lastExtracted.reference}</span>
+                <span className="text-slate-500">Method:</span>
+                <span className="font-bold text-slate-900">{lastExtracted.paymentMethod}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Extracted Amount:</span>
@@ -208,8 +204,10 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">New Balance:</span>
-                <span className="font-bold text-slate-900">৳ {lastExtracted.balance.toLocaleString('en-BD')}</span>
+                <span className="text-slate-500">Last 3 Digits (Trx/Sender):</span>
+                <span className="font-mono font-bold text-slate-900">
+                  Trx: {lastExtracted.last3DigitsTrx} | Ph: {lastExtracted.last3DigitsSender}
+                </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Transaction ID:</span>

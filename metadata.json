@@ -1,6 +1,6 @@
 {
   "name": "Unity Earning Payment Confirm System",
-  "description": "Android & Web Payment Confirmation & SMS Extraction System for bKash, Nagad, Rocket, and Upay with Admin Commit Messages",
+  "description": "Android & Web Payment Confirmation & SMS Extraction System for bKash, Nagad, Rocket, and Upay",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

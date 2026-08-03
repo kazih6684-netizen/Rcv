@@ -1,44 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Common helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function isValidPayment(data) {
-      return data.amount is number &&
-             data.paymentMethod in ['bKash', 'Nagad', 'Rocket', 'Upay'] &&
-             data.transactionId is string && data.transactionId.size() <= 32 &&
-             data.smsHash is string && data.smsHash.size() <= 64 &&
-             data.verified is bool &&
-             data.createdAt is string;
-    }
-
-    // Payments collection
-    match /payments/{paymentId} {
-      // Allow everyone to read (for User Search) - but only via query/get
-      // In a real production system, you might want to restrict 'list' or mask data.
-      // But for this app's search feature, public read is required.
-      allow read: if true;
-      
-      // Writes only allowed if valid payment data
-      // For this specific app, MacroDroid (Server) or Admin adds data.
-      // If we assume a server-side only write, we could restrict to Admin.
-      // For simplicity in this demo environment, we allow all valid writes.
-      allow create: if isValidPayment(incoming());
-      
-      // Allow updates/deletes (Admin only ideally)
-      allow update, delete: if true; 
+    match /payments/{document=**} {
+      allow read, write: if true;
     }
   }
 }

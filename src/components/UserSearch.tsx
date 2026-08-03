@@ -21,14 +21,24 @@ interface UserSearchProps {
 }
 
 export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
-  const [query, setQuery] = useState<string>('');
+  const [digits, setDigits] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchResults, setSearchResults] = useState<PaymentRecord[] | null>(null);
   const [searchedQuery, setSearchedQuery] = useState<string>('');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
 
+  const handleKeyPress = (num: string) => {
+    if (digits.length < 11) {
+      setDigits((prev) => prev + num);
+    }
+  };
+
+  const handleBackspace = () => {
+    setDigits((prev) => prev.slice(0, -1));
+  };
+
   const handleClear = () => {
-    setQuery('');
+    setDigits('');
     setSearchResults(null);
     setHasSearched(false);
   };
@@ -48,14 +58,14 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
 
   const handleSearchSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!query.trim()) return;
+    if (!digits.trim()) return;
 
     setIsLoading(true);
-    setSearchedQuery(query.trim());
+    setSearchedQuery(digits.trim());
     setHasSearched(true);
 
     try {
-      const results = await onSearch(query.trim());
+      const results = await onSearch(digits.trim());
       setSearchResults(results);
       if (results && results.length > 0) {
         triggerConfetti();
@@ -80,68 +90,96 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
           Verify Your Payment
         </h2>
         <p className="text-xs sm:text-sm text-slate-600 max-w-xs mx-auto">
-          Enter Transaction ID, Sender Number, Amount, or Reference to confirm your payment.
+          Enter the last 3 digits of your transaction ID or sender phone number to confirm receipt.
         </p>
       </div>
 
-      {/* Main Search Input */}
+      {/* Main Search Input & Keypad Display */}
       <div className="bg-white rounded-2xl p-5 shadow-xl border border-slate-200 space-y-5">
-        <form onSubmit={handleSearchSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">
-              Search Details
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="TrxID, Sender, or Ref..."
-                className="w-full py-3.5 pl-4 pr-12 bg-slate-50 border-2 border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 rounded-xl text-slate-900 placeholder-slate-400 font-bold transition outline-none"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={!query || isLoading}
-            className={`w-full py-4 px-6 rounded-xl text-white font-bold text-base shadow-lg transition flex items-center justify-center space-x-2 ${
-              query && !isLoading
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/25 active:scale-[0.99]'
-                : 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
-            }`}
-          >
-            {isLoading ? (
-              <div className="flex items-center space-x-2">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                <span>Checking Database...</span>
-              </div>
-            ) : (
-              <>
-                <Search className="w-5 h-5" />
-                <span>Verify Payment</span>
-              </>
+        <div className="space-y-1.5">
+          <label className="block text-center text-xs font-bold uppercase tracking-wider text-slate-500">
+            Enter Last 3 Digits
+          </label>
+          <div className="relative flex items-center justify-center">
+            <input
+              type="text"
+              readOnly
+              value={digits}
+              placeholder="___"
+              className="w-full text-center text-3xl sm:text-4xl font-black tracking-[0.3em] py-3.5 px-4 bg-slate-50 border-2 border-emerald-500/50 focus:border-emerald-600 rounded-xl text-slate-900 placeholder-slate-300 shadow-inner select-none transition"
+            />
+            {digits && (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="absolute right-3 text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition"
+                title="Clear input"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
             )}
-          </button>
-        </form>
-
-        <div className="grid grid-cols-2 gap-2">
-          {['bKash', 'Nagad', 'Rocket', 'Upay'].map((method) => (
-            <div key={method} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
-              <div className={`w-2 h-2 rounded-full ${getProviderBrandColor(method as any).bg}`}></div>
-              <span className="text-[10px] font-bold text-slate-600 uppercase">{method} Supported</span>
-            </div>
-          ))}
+          </div>
         </div>
+
+        {/* Numeric Keypad (0 to 9, Backspace, Clear) */}
+        <div className="grid grid-cols-3 gap-2.5 pt-2">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
+            <button
+              key={`keypad-${num}`}
+              type="button"
+              onClick={() => handleKeyPress(num)}
+              className="py-3.5 text-xl font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
+            >
+              {num}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={handleClear}
+            className="py-3.5 text-sm font-bold rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-600 border border-rose-200 shadow-sm transition flex items-center justify-center"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => handleKeyPress('0')}
+            className="py-3.5 text-xl font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
+          >
+            0
+          </button>
+          <button
+            type="button"
+            onClick={handleBackspace}
+            className="py-3.5 text-sm font-bold rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-700 border border-amber-200 shadow-sm transition flex items-center justify-center"
+            title="Backspace"
+          >
+            <Delete className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Search CTA Button */}
+        <button
+          type="button"
+          onClick={() => handleSearchSubmit()}
+          disabled={!digits || isLoading}
+          className={`w-full py-4 px-6 rounded-xl text-white font-bold text-base shadow-lg transition flex items-center justify-center space-x-2 ${
+            digits && !isLoading
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/25 active:scale-[0.99]'
+              : 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
+          }`}
+        >
+          {isLoading ? (
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <span>Checking Database...</span>
+            </div>
+          ) : (
+            <>
+              <Search className="w-5 h-5" />
+              <span>Search Payment</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* SEARCH RESULTS SECTION */}
@@ -221,12 +259,6 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
                         </span>
                         <span className="font-bold text-slate-900">{record.dateTime}</span>
                       </div>
-                      {record.message && (
-                        <div className="pt-2 border-t border-slate-200 mt-1">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Admin Note</span>
-                          <p className="text-xs text-slate-700 italic font-medium">"{record.message}"</p>
-                        </div>
-                      )}
                     </div>
                   </div>
 
