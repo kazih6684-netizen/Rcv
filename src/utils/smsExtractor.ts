@@ -15,22 +15,31 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
   // 1. Detect Payment Method
   let paymentMethod: PaymentMethod | null = null;
 
-  if (lowerText.includes('bkash') || lowerText.includes('trxid')) {
-    paymentMethod = 'bKash';
-  } else if (lowerText.includes('nagad') || lowerText.includes('txnid') && (lowerText.includes('received amount') || lowerText.includes('cash in'))) {
-    paymentMethod = 'Nagad';
-  } else if (lowerText.includes('rocket') || (lowerText.includes('tk.') && lowerText.includes('received from'))) {
-    paymentMethod = 'Rocket';
-  } else if (lowerText.includes('upay') || lowerText.includes('up123') || (lowerText.includes('cash in / payment') && lowerText.includes('upay'))) {
-    paymentMethod = 'Upay';
+  if (lowerText.includes("bkash")) {
+    paymentMethod = "bKash";
+  } else if (lowerText.includes("nagad")) {
+    paymentMethod = "Nagad";
+  } else if (lowerText.includes("rocket")) {
+    paymentMethod = "Rocket";
+  } else if (lowerText.includes("upay")) {
+    paymentMethod = "Upay";
   }
 
   // Fallback keyword matching
   if (!paymentMethod) {
-    if (lowerText.includes('nagad')) paymentMethod = 'Nagad';
-    else if (lowerText.includes('rocket')) paymentMethod = 'Rocket';
-    else if (lowerText.includes('upay')) paymentMethod = 'Upay';
-    else paymentMethod = 'bKash'; // Default MFS in BD
+    if (lowerText.includes("money received")) {
+        paymentMethod = "Nagad";
+    } else if (lowerText.includes("txnid") && (lowerText.includes("received amount") || lowerText.includes("cash in"))) {
+      paymentMethod = "Nagad";
+    } else if (lowerText.includes("tk.") && lowerText.includes("received from")) {
+      paymentMethod = "Rocket";
+    } else if (lowerText.includes("up123")) {
+      paymentMethod = "Upay";
+    } else if (lowerText.includes("trxid")) {
+      paymentMethod = "bKash";
+    } else {
+      paymentMethod = "bKash"; // Default MFS in BD
+    }
   }
 
   // 2. Extract Amount
@@ -45,25 +54,24 @@ export function parsePaymentSMS(rawSms: string): SMSParseResult {
   }
 
   // 3. Extract Sender Phone Number or Name
-  // Matches Bangladeshi mobile numbers: 013, 014, 015, 016, 017, 018, 019 followed by 8 digits
-  const phoneRegex = /(?:from|Sender:?|number:?)\s*(01[3-9][0-9]{8})/i;
-  const phoneMatch = text.match(phoneRegex);
-  
-  // For NPSB or bank transfers, it might be a name or account, e.g., "from Yasin"
-  const fromNameRegex = /(?:from|Sender:?)\s+([A-Za-z0-9\s]+?)(?:\.|,|\s(?:Fee|Balance|Txn|Trx|at|Date|Tk|successful))/i;
-  const fromNameMatch = text.match(fromNameRegex);
-
-  // Alternative direct phone regex anywhere in text
-  const directPhoneRegex = /\b(01[3-9][0-9]{8})\b/;
-  const fallbackPhoneMatch = text.match(directPhoneRegex);
-
   let senderNumber = '01700000000';
-  if (phoneMatch && phoneMatch[1]) {
-    senderNumber = phoneMatch[1].trim();
-  } else if (fromNameMatch && fromNameMatch[1] && fromNameMatch[1].trim().length > 0) {
-    senderNumber = fromNameMatch[1].trim();
-  } else if (fallbackPhoneMatch && fallbackPhoneMatch[1]) {
-    senderNumber = fallbackPhoneMatch[1].trim();
+  const m1 = text.match(/(?:from|Sender:?|number:?).*?\b(01[3-9][0-9Xx*]{8})\b/i);
+  const m2 = text.match(/(?:from|Sender:?|number:?|A\/C).*?(?:\s|^)([*Xx]{2,6}[0-9]{3,4})\b/i);
+  const nameMatch = text.match(/(?:from|Sender:?)\s+([A-Za-z0-9\s]+?)(?:\.|,|\s(?:Fee|Balance|Txn|Trx|at|Date|Tk|successful|through))/i);
+
+  if (m1 && m1[1]) {
+    senderNumber = m1[1].trim();
+  } else if (m2 && m2[1]) {
+    senderNumber = m2[1].trim();
+  } else if (nameMatch && nameMatch[1] && nameMatch[1].trim().length > 0) {
+    senderNumber = nameMatch[1].trim();
+  } else {
+    // Alternative direct phone regex anywhere in text
+    const directPhoneRegex = /\b(01[3-9][0-9Xx*]{8})\b/;
+    const fallbackPhoneMatch = text.match(directPhoneRegex);
+    if (fallbackPhoneMatch && fallbackPhoneMatch[1]) {
+      senderNumber = fallbackPhoneMatch[1].trim();
+    }
   }
 
   // 4. Extract Transaction ID
