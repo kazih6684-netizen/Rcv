@@ -1,0 +1,12 @@
+{
+  "collections": [
+    {
+      "collectionId": "payments",
+      "description": "Stores all incoming payments.",
+      "securityRules": {
+        "read": "true",
+        "write": "true"
+      }
+    }
+  ]
+}
