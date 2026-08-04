@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { parsePaymentSMS } from './src/utils/smsExtractor.js';
 import { PaymentRecord, PaymentStats } from './src/types.js';
 
-import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from './src/firebase.js';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp } from './src/firebase.js';
 
 const app = express();
 const PORT = 3000;
@@ -143,8 +143,8 @@ app.post('/api/payments', async (req, res) => {
     transactionId: cleanTrx,
     dateTime: `${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
     rawSms: `Manual Payment Entry: Tk ${amount} from ${cleanSender}. TrxID: ${cleanTrx}`,
-    status: 'Success',
-    createdAt: new Date().toISOString(),
+    status: 'verified',
+    createdAt: serverTimestamp(),
   };
 
   try {
