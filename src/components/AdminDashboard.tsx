@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   TrendingUp,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { PaymentRecord, PaymentStats, PaymentMethod } from '../types';
 import { getProviderBrandColor } from '../utils/smsExtractor';
+import { db, collection, query, orderBy, onSnapshot } from '../firebase';
 
 interface AdminDashboardProps {
   payments: PaymentRecord[];
@@ -53,6 +54,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs'>('payments');
+  const [failedLogs, setFailedLogs] = useState<any[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
 
   // Form states for manual entry
@@ -90,6 +94,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setShowClearAllConfirm(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      setIsLoadingLogs(true);
+      const q = query(collection(db, 'failed_parse_logs'), orderBy('timestamp', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setFailedLogs(logs);
+        setIsLoadingLogs(false);
+      });
+      return () => unsubscribe();
+    }
+  }, [activeTab]);
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -295,37 +312,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
-        {/* Search Input */}
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by last 3 digits, Trx ID, mobile number..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
-          />
-        </div>
-
-        {/* Provider Tabs */}
+      {/* Tab Navigation Container */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
         <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar">
-          {['all', 'bKash', 'Nagad', 'Rocket', 'Upay'].map((prov) => (
-            <button
-              key={`filter-${prov}`}
-              onClick={() => setSelectedProvider(prov)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
-                selectedProvider === prov
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {prov === 'all' ? 'All Providers' : prov}
-            </button>
-          ))}
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+              activeTab === 'payments' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Payments
+          </button>
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+              activeTab === 'stats' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Statistics
+          </button>
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+              activeTab === 'logs' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Failed SMS Logs
+          </button>
         </div>
       </div>
+
+      {activeTab === 'payments' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by last 3 digits, Trx ID, mobile number..."
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Provider Filter */}
+            <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar">
+              {['all', 'bKash', 'Nagad', 'Rocket', 'Upay'].map((prov) => (
+                <button
+                  key={`filter-${prov}`}
+                  onClick={() => setSelectedProvider(prov)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                    selectedProvider === prov
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {prov === 'all' ? 'All Providers' : prov}
+                </button>
+              ))}
+            </div>
+          </div>
 
       {/* Payment Table / List */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -402,6 +450,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
       </div>
+    </div>
+  )}
+
+      {activeTab === 'logs' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-4 bg-red-50 border-b border-red-100 flex justify-between items-center">
+            <h3 className="font-bold text-red-900 text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+              <span>Failed SMS Logs ({failedLogs.length})</span>
+            </h3>
+            <span className="text-[10px] text-red-600 font-bold uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-full">
+              Debug View
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Time</th>
+                  <th className="p-3">Sender</th>
+                  <th className="p-3">SMS Content</th>
+                  <th className="p-3">Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {failedLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-slate-400">No failed logs found. Everything is parsing correctly!</td>
+                  </tr>
+                ) : (
+                  failedLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50">
+                      <td className="p-3 whitespace-nowrap text-slate-500">
+                        {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : 'Recent'}
+                      </td>
+                      <td className="p-3 font-mono font-bold text-slate-700">{log.sender}</td>
+                      <td className="p-3 max-w-md break-words italic text-slate-600">{log.smsText}</td>
+                      <td className="p-3 text-red-500 font-bold">{log.error}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* DELETE CONFIRMATION MODAL */}
       {isDeletingId && (

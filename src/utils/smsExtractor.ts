@@ -23,6 +23,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     lowerText.includes('deposit') || 
     lowerText.includes('money received') || 
     lowerText.includes('payment received') ||
+    lowerText.includes('cash in') ||
     lowerText.includes('npsb received') ||
     lowerText.includes('ibanking deposit') ||
     lowerText.includes('successful') ||
@@ -60,7 +61,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   // Tertiary identification by patterns if name not explicitly mentioned
   if (!paymentMethod) {
     if (lowerText.includes("trxid")) paymentMethod = "bKash";
-    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("received amount") || lowerText.includes("money received") || lowerText.includes("successful"))) paymentMethod = "Nagad";
+    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("received amount") || lowerText.includes("money received") || lowerText.includes("cash in") || lowerText.includes("successful"))) paymentMethod = "Nagad";
     else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("tk.") || lowerText.includes("rocket"))) paymentMethod = "Rocket";
     else paymentMethod = "bKash"; // Default
   }
@@ -88,16 +89,22 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // 5. Extract Sender Number
   let senderNumber = '';
-  // Pattern 1: from 017xxxxxxxx
-  const fromMatch = text.match(/(?:from|Sender:?|number:?|A\/C:?\*?)\s*:?\s*([0-9Xx*]{3,11}[0-9]{3,4})/i);
+  // Pattern 1: Search for numbers in "from", "Sender", "number", "A/C", "Uddokta" patterns
+  const fromMatch = text.match(/(?:from|Sender:?|number:?|A\/C:?\*?|Uddokta:?)\s*:?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
   if (fromMatch && fromMatch[1]) {
     senderNumber = fromMatch[1].trim();
   } else {
-    // Pattern 2: Search for any 11 digit number starting with 01
-    const genericPhoneMatch = text.match(/\b(01[3-9][0-9]{8})\b/);
+    // Pattern 2: Search for any 11 digit number starting with 01 anywhere in text
+    const genericPhoneMatch = text.match(/(?:\+?88)?(01[3-9][0-9]{8})\b/);
     if (genericPhoneMatch) {
       senderNumber = genericPhoneMatch[1];
     }
+  }
+
+  // Clean up sender number to ensure it starts with 01 if it's 11 digits
+  if (senderNumber && senderNumber.length > 11) {
+    const cleanMatch = senderNumber.match(/(01[3-9][0-9]{8})/);
+    if (cleanMatch) senderNumber = cleanMatch[1];
   }
 
   // 6. Final Validation - If we can't find a TrxID or Amount, it might not be a valid record
