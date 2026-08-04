@@ -22,15 +22,14 @@ interface UserSearchProps {
 
 export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
   const [digits, setDigits] = useState<string>('');
-  const [isAlphanumeric, setIsAlphanumeric] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchResults, setSearchResults] = useState<PaymentRecord[] | null>(null);
   const [searchedQuery, setSearchedQuery] = useState<string>('');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
 
-  const handleKeyPress = (val: string) => {
-    if (digits.length < 12) {
-      setDigits((prev) => prev + val);
+  const handleKeyPress = (num: string) => {
+    if (digits.length < 11) {
+      setDigits((prev) => prev + num);
     }
   };
 
@@ -101,23 +100,19 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
           <label className="block text-center text-xs font-bold uppercase tracking-wider text-slate-500">
             Enter Last 3 Digits
           </label>
-          <div className="relative flex flex-col items-center justify-center space-y-2">
+          <div className="relative flex items-center justify-center">
             <input
               type="text"
+              readOnly
               value={digits}
-              onChange={(e) => setDigits(e.target.value.toUpperCase())}
               placeholder="___"
-              className="w-full text-center text-3xl sm:text-4xl font-black tracking-[0.2em] py-3.5 px-4 bg-slate-50 border-2 border-emerald-500/50 focus:border-emerald-600 rounded-xl text-slate-900 placeholder-slate-300 shadow-inner transition"
-              autoFocus
+              className="w-full text-center text-3xl sm:text-4xl font-black tracking-[0.3em] py-3.5 px-4 bg-slate-50 border-2 border-emerald-500/50 focus:border-emerald-600 rounded-xl text-slate-900 placeholder-slate-300 shadow-inner select-none transition"
             />
-            <p className="text-[10px] text-slate-500 font-bold uppercase">
-              Type or use keypad below
-            </p>
             {digits && (
               <button
                 type="button"
                 onClick={handleClear}
-                className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition"
+                className="absolute right-3 text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition"
                 title="Clear input"
               >
                 <RotateCcw className="w-5 h-5" />
@@ -126,44 +121,18 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
           </div>
         </div>
 
-        <div className="flex justify-center mb-2">
-          <button
-            type="button"
-            onClick={() => setIsAlphanumeric(!isAlphanumeric)}
-            className="text-[10px] font-black uppercase tracking-widest px-3 py-1 bg-slate-100 border border-slate-200 rounded-full text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 transition"
-          >
-            {isAlphanumeric ? 'Switch to Numbers' : 'Switch to Letters'}
-          </button>
-        </div>
-
-        {/* Numeric or Alphanumeric Keypad */}
+        {/* Numeric Keypad (0 to 9, Backspace, Clear) */}
         <div className="grid grid-cols-3 gap-2.5 pt-2">
-          {isAlphanumeric ? (
-            // Alphanumeric Keypad (Simplified for common hex/TrxID chars)
-            ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((char) => (
-              <button
-                key={`keypad-${char}`}
-                type="button"
-                onClick={() => handleKeyPress(char)}
-                className="py-3 text-lg font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
-              >
-                {char}
-              </button>
-            ))
-          ) : (
-            // Standard Numeric Keypad
-            ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
-              <button
-                key={`keypad-${num}`}
-                type="button"
-                onClick={() => handleKeyPress(num)}
-                className="py-3.5 text-xl font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
-              >
-                {num}
-              </button>
-            ))
-          )}
-          
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
+            <button
+              key={`keypad-${num}`}
+              type="button"
+              onClick={() => handleKeyPress(num)}
+              className="py-3.5 text-xl font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
+            >
+              {num}
+            </button>
+          ))}
           <button
             type="button"
             onClick={handleClear}
@@ -171,28 +140,13 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
           >
             Clear
           </button>
-          
-          {isAlphanumeric ? (
-            ['M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0'].map((char) => (
-              <button
-                key={`keypad-${char}`}
-                type="button"
-                onClick={() => handleKeyPress(char)}
-                className="py-3 text-lg font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
-              >
-                {char}
-              </button>
-            ))
-          ) : (
-            <button
-              type="button"
-              onClick={() => handleKeyPress('0')}
-              className="py-3.5 text-xl font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
-            >
-              0
-            </button>
-          )}
-
+          <button
+            type="button"
+            onClick={() => handleKeyPress('0')}
+            className="py-3.5 text-xl font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 shadow-sm transition flex items-center justify-center"
+          >
+            0
+          </button>
           <button
             type="button"
             onClick={handleBackspace}

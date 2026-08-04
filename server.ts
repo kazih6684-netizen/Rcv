@@ -1,10 +1,10 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { parsePaymentSMS, isOTPSMS, detectProvider } from './src/utils/smsExtractor.js';
-import { PaymentRecord, PaymentStats, AdminSmsLog } from './src/types.js';
+import { parsePaymentSMS } from './src/utils/smsExtractor.js';
+import { PaymentRecord, PaymentStats } from './src/types.js';
 
-import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp, updateDoc } from './src/firebase.js';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp } from './src/firebase.js';
 
 const app = express();
 const PORT = 3000;
@@ -46,24 +46,18 @@ app.post('/api/payments/search', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Digits string is required' });
   }
   const queryStr = digits.trim().toLowerCase();
-  console.log(`PAYMENT SEARCH: Query digits [${queryStr}]`);
   
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
-    const trxMatch = pay.last3DigitsTrx.toLowerCase() === queryStr || pay.transactionId.toLowerCase().endsWith(queryStr) || pay.transactionId.toLowerCase().includes(queryStr);
-    const senderMatch = pay.last3DigitsSender.toLowerCase() === queryStr || pay.senderNumber.toLowerCase().endsWith(queryStr) || pay.senderNumber.toLowerCase().includes(queryStr);
-    
-    if (trxMatch || senderMatch) {
-      console.log(` -> MATCH FOUND: TrxID=${pay.transactionId}, Sender=${pay.senderNumber}, Amount=${pay.amount}`);
-      return true;
-    }
-    return false;
+    return (
+      pay.last3DigitsTrx.toLowerCase() === queryStr ||
+      pay.last3DigitsSender.toLowerCase() === queryStr ||
+      pay.transactionId.toLowerCase().endsWith(queryStr) ||
+      pay.senderNumber.toLowerCase().endsWith(queryStr) ||
+      pay.transactionId.toLowerCase().includes(queryStr) ||
+      pay.senderNumber.toLowerCase().includes(queryStr)
+    );
   });
-
-  if (matched.length === 0) {
-    console.log(` -> NO MATCH FOUND for query [${queryStr}]`);
-  }
-
   res.json({
     success: true,
     query: queryStr,
@@ -74,53 +68,26 @@ app.post('/api/payments/search', async (req, res) => {
 
 // Parse SMS & Auto-Add to DB
 app.post('/api/sms/parse', async (req, res) => {
-  console.log("-----------------------------------------");
-  console.log("PAYMENT DETECTOR: Received Request");
+  console.log("DEBUG: Received SMS Parse Request");
+  console.log("DEBUG: Request Body:", JSON.stringify(req.body));
   
   const smsText = req.body.smsText || req.body.sms_message || req.body.body || req.body.message || req.body.text;
   const sender = req.body.sender || req.body.from || req.body.number || req.body.address || req.body.sms_number;
   
   if (!smsText || typeof smsText !== 'string') {
-    console.log("PAYMENT DETECTOR ERROR: SMS text not found");
+    console.log("DEBUG: SMS text not found in request body");
     return res.status(400).json({ success: false, message: 'SMS text is required' });
   }
 
-  // 1. Check for OTP (Requirement 2)
-  if (isOTPSMS(smsText)) {
-    console.log("PAYMENT DETECTOR: Ignored OTP/Auth SMS");
-    return res.json({ success: false, message: 'OTP/Authentication SMS ignored' });
-  }
-
-  console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}]`);
-  console.log(`PAYMENT DETECTOR: Content: "${smsText}"`);
+  console.log("DEBUG: SMS Text:", smsText);
+  console.log("DEBUG: SMS Sender:", sender);
   
-  const provider = detectProvider(smsText, typeof sender === 'string' ? sender : undefined);
-
   try {
     const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
-    
-    // Log to admin_sms_logs if it's Nagad or if any provider is detected (Requirement 3)
-    // The user specifically mentioned Nagad but also said "every non OTP Nagad payment SMS"
-    // I will log all Nagad and possibly others to be safe, but focusing on Nagad as requested.
-    if (provider === 'Nagad' || provider) {
-      const logData: Omit<AdminSmsLog, 'id'> = {
-        rawText: smsText,
-        sender: String(sender || 'Unknown'),
-        receivedAt: new Date().toISOString(),
-        timestamp: serverTimestamp(),
-        status: parseResult.success ? 'Confirmed' : 'Needs Review',
-        parserStatus: parseResult.success ? 'Success' : 'Failed',
-        extractedAmount: parseResult.amount,
-        extractedTrxId: parseResult.transactionId,
-        extractedSender: parseResult.senderNumber,
-        provider: provider || undefined
-      };
-      await addDoc(collection(db, 'admin_sms_logs'), logData);
-      console.log(`PAYMENT DETECTOR: Logged to admin_sms_logs (Provider: ${provider})`);
-    }
+    console.log("DEBUG: Parse Result:", JSON.stringify(parseResult));
 
     if (!parseResult.success) {
-      console.log(`PAYMENT DETECTOR FAIL: ${parseResult.error}`);
+      console.log("DEBUG: Parse failed:", parseResult.error);
       // Log failed parse attempts for debugging
       await addDoc(collection(db, 'failed_parse_logs'), {
         smsText,
@@ -131,13 +98,6 @@ app.post('/api/sms/parse', async (req, res) => {
       return res.status(400).json({ success: false, message: parseResult.error });
     }
     
-    console.log(`PAYMENT DETECTOR SUCCESS:`);
-    console.log(` -> Provider Detected: ${parseResult.paymentMethod}`);
-    console.log(` -> Amount Extracted: ৳${parseResult.amount}`);
-    console.log(` -> Balance: ৳${parseResult.balance || 0}`);
-    console.log(` -> Transaction ID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
-    console.log(` -> Sender Number: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
-
     const newPaymentData = {
       amount: parseResult.amount,
       paymentMethod: parseResult.paymentMethod,
@@ -145,7 +105,6 @@ app.post('/api/sms/parse', async (req, res) => {
       last3DigitsSender: parseResult.last3DigitsSender,
       senderNumber: parseResult.senderNumber,
       transactionId: parseResult.transactionId,
-      balance: parseResult.balance || 0,
       dateTime: parseResult.dateTime,
       rawSms: parseResult.rawSms,
       status: 'verified',
@@ -153,9 +112,7 @@ app.post('/api/sms/parse', async (req, res) => {
     };
 
     const docRef = await addDoc(collection(db, 'payments'), newPaymentData);
-    console.log(`PAYMENT DETECTOR: Saved to Firestore with ID: ${docRef.id}`);
-    console.log("-----------------------------------------");
-    
+    console.log("DEBUG: Saved to Firestore with ID:", docRef.id);
     const newPayment = { id: docRef.id, ...newPaymentData };
     res.json({
       success: true,
@@ -163,65 +120,8 @@ app.post('/api/sms/parse', async (req, res) => {
       payment: newPayment,
     });
   } catch (err) {
-    console.error("PAYMENT DETECTOR ERROR: Exception during processing", err);
+    console.error("DEBUG: Error processing SMS", err);
     res.status(500).json({ success: false, message: 'Failed to process SMS' });
-  }
-});
-
-// Admin SMS Logs API
-app.get('/api/admin/sms-logs', async (req, res) => {
-  try {
-    const q = query(collection(db, 'admin_sms_logs'), orderBy('timestamp', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const logs: AdminSmsLog[] = [];
-    querySnapshot.forEach((doc) => {
-      logs.push({ id: doc.id, ...doc.data() } as AdminSmsLog);
-    });
-    res.json({ success: true, logs });
-  } catch (err) {
-    console.error("Error fetching SMS logs", err);
-    res.status(500).json({ success: false, message: 'Failed to fetch SMS logs' });
-  }
-});
-
-// Manually confirm an SMS log
-app.post('/api/admin/sms-logs/:id/confirm', async (req, res) => {
-  const { id } = req.params;
-  const { amount, trxId, senderNumber, provider } = req.body;
-  
-  if (!amount || !trxId || !senderNumber || !provider) {
-    return res.status(400).json({ success: false, message: 'Missing required fields for confirmation' });
-  }
-
-  try {
-    // 1. Create the payment record
-    const cleanSender = String(senderNumber).trim();
-    const cleanTrx = String(trxId).trim().toUpperCase();
-    
-    const newPaymentData = {
-      amount: Number(amount) || 0,
-      paymentMethod: provider,
-      last3DigitsTrx: cleanTrx.slice(-3),
-      last3DigitsSender: cleanSender.slice(-3),
-      senderNumber: cleanSender,
-      transactionId: cleanTrx,
-      dateTime: `${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
-      rawSms: `Manually Confirmed from Admin SMS Inbox: Tk ${amount} from ${cleanSender}. TrxID: ${cleanTrx}`,
-      status: 'verified',
-      createdAt: serverTimestamp(),
-    };
-
-    await addDoc(collection(db, 'payments'), newPaymentData);
-    
-    // 2. Update the log status
-    await updateDoc(doc(db, 'admin_sms_logs', id), {
-      status: 'Confirmed'
-    });
-
-    res.json({ success: true, message: 'Payment confirmed manually' });
-  } catch (err) {
-    console.error("Error confirming SMS log", err);
-    res.status(500).json({ success: false, message: 'Failed to confirm payment' });
   }
 });
 
