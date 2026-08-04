@@ -79,6 +79,18 @@ app.post('/api/sms/parse', async (req, res) => {
     return res.status(400).json({ success: false, message: 'SMS text is required' });
   }
 
+  // LOG ALL INCOMING SMS for debugging (requested by user as admin_sms_logs)
+  try {
+    await addDoc(collection(db, 'admin_sms_logs'), {
+      smsText,
+      sender: sender || 'Unknown',
+      timestamp: serverTimestamp(),
+      receivedAt: new Date().toISOString(),
+    });
+  } catch (logErr) {
+    console.error("DEBUG: Failed to log to admin_sms_logs", logErr);
+  }
+
   console.log("DEBUG: SMS Text:", smsText);
   console.log("DEBUG: SMS Sender:", sender);
   

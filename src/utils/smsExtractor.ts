@@ -40,7 +40,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // Primary detection by sender shortcode
   if (lowerSender.includes('bkash')) paymentMethod = 'bKash';
-  else if (lowerSender.includes('nagad') || lowerSender === '16167') paymentMethod = 'Nagad';
+  else if (lowerSender.includes('nagad') || lowerSender === '16167' || lowerSender === 'nagad-api') paymentMethod = 'Nagad';
   else if (lowerSender.includes('rocket') || lowerSender === '16216' || lowerSender.includes('nexuspay')) paymentMethod = 'Rocket';
   else if (lowerSender.includes('upay') || lowerSender === '16268') paymentMethod = 'Upay';
 
@@ -60,15 +60,15 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   // Tertiary identification by patterns if name not explicitly mentioned
   if (!paymentMethod) {
     if (lowerText.includes("trxid")) paymentMethod = "bKash";
-    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("received amount") || lowerText.includes("money received") || lowerText.includes("cash in") || lowerText.includes("successful") || lowerText.includes("uddokta"))) paymentMethod = "Nagad";
+    else if ((lowerText.includes("txnid") || lowerText.includes("txn id") || lowerText.includes("txnid:")) && (lowerText.includes("received amount") || lowerText.includes("money received") || lowerText.includes("cash in") || lowerText.includes("successful") || lowerText.includes("uddokta") || lowerText.includes("agent"))) paymentMethod = "Nagad";
     else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("tk.") || lowerText.includes("rocket"))) paymentMethod = "Rocket";
     else paymentMethod = "bKash"; // Default
   }
 
   // 3. Extract Amount
   // Enhanced regex to capture various formats
-  // Matches: Tk 500, Tk. 500, Tk500, Amount: Tk 500, Received Amount: 500, etc.
-  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*(?:Tk)?|Amount:?\s*(?:Tk|BDT)?|Cash In\s*(?:Tk)?|Money Received\s*(?:Tk)?|Tk\s*:|Amount\s*:?)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
+  // Matches: Tk 500, Tk. 500, Tk500, Amount: Tk 500, Received Amount: 500, Cash In: Tk 500, etc.
+  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*(?:Tk)?|Amount:?\s*(?:Tk|BDT)?|Cash In:?\s*(?:Tk)?|Money Received:?\s*(?:Tk)?|Tk\s*:|Amount\s*:?)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
   const amountMatch = text.match(amountRegex);
   
   let amount = 0;
@@ -78,7 +78,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // 4. Extract Transaction ID
   // Matches: TrxID 9A8B7C6D5E, TxnID: 7X8Y9Z0A, TxnId: 123456, ID: 12345, Transaction ID: ...
-  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx)\s*:?\s*([A-Z0-9]{6,16})/i;
+  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx|Txn)\s*:?\s*([A-Z0-9]{6,16})/i;
   const trxMatch = text.match(trxRegex);
 
   let transactionId = '';
@@ -89,7 +89,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   // 5. Extract Sender Number
   let senderNumber = '';
   // Pattern 1: Search for numbers in "from", "Sender", "number", "A/C", "Uddokta", "Agent" patterns
-  const fromMatch = text.match(/(?:from|Sender:?|number:?|A\/C:?\*?|Uddokta:?|Agent:?|Customer:?)\s*:?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
+  const fromMatch = text.match(/(?:from|Sender:?|number:?|A\/C:?\*?|Uddokta:?|Agent:?|Customer:?|Mobile:?)\s*:?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
   if (fromMatch && fromMatch[1]) {
     senderNumber = fromMatch[1].trim();
   } else {
