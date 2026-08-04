@@ -1,5 +1,32 @@
 import { PaymentMethod, SMSParseResult } from '../types';
 
+export function isOTPSMS(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  const otpKeywords = [
+    'otp', 'verification code', 'secret code', 'login code', 
+    'password reset', 'security code', 'authentication code',
+    'one time password', 'don\'t share', 'dont share'
+  ];
+  return otpKeywords.some(kw => lowerText.includes(kw));
+}
+
+export function detectProvider(text: string, senderShortcode?: string): PaymentMethod | null {
+  const lowerText = text.toLowerCase();
+  const lowerSender = (senderShortcode || '').toLowerCase();
+
+  if (lowerSender.includes('bkash')) return 'bKash';
+  if (lowerSender.includes('nagad') || lowerSender === '16167') return 'Nagad';
+  if (lowerSender.includes('rocket') || lowerSender === '16216' || lowerSender.includes('nexuspay')) return 'Rocket';
+  if (lowerSender.includes('upay') || lowerSender === '16268') return 'Upay';
+
+  if (lowerText.includes('bkash')) return 'bKash';
+  if (lowerText.includes('nagad') || lowerText.includes('uddokta')) return 'Nagad';
+  if (lowerText.includes('rocket') || lowerText.includes('nexuspay')) return 'Rocket';
+  if (lowerText.includes('upay')) return 'Upay';
+
+  return null;
+}
+
 /**
  * Automatically extracts payment details from raw Bangladeshi MFS SMS text
  * Supported providers: bKash, Nagad, Rocket, Upay
@@ -197,5 +224,20 @@ export const SAMPLE_SMS_TEMPLATES = [
     provider: 'Nagad' as PaymentMethod,
     label: 'Nagad Cash In (Tk 1,000)',
     sms: 'Cash In Received. Amount: Tk 1,000.00. Uddokta: 01822334455. TxnID: 7X8Y9Z888. Balance: Tk 5,500.00. Date: 04/08/2026 11:45.',
+  },
+  {
+    provider: 'Nagad' as PaymentMethod,
+    label: 'Nagad Money Received (Tk 500)',
+    sms: 'Money Received. Amount: Tk 500.00. Sender: 01711223344. TxnID: 9B8C7D654. Balance: Tk 10,500.00. Date: 04/08/2026 12:30.',
+  },
+  {
+    provider: 'Nagad' as PaymentMethod,
+    label: 'Nagad Non-Payment (OTP - Ignored)',
+    sms: 'Your Nagad verification code is 123456. Do not share this code with anyone.',
+  },
+  {
+    provider: 'Nagad' as PaymentMethod,
+    label: 'Nagad Broken SMS (Needs Review)',
+    sms: 'Nagad: You have some incoming balance of Tk 300. Check your wallet for ID 556677.',
   },
 ];

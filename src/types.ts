@@ -37,6 +37,20 @@ export interface PaymentStats {
   byMethod: Record<PaymentMethod, number>;
 }
 
+export interface AdminSmsLog {
+  id?: string;
+  rawText: string;
+  sender: string;
+  receivedAt: string;
+  timestamp: any; // Firestore serverTimestamp
+  status: 'New' | 'Confirmed' | 'Needs Review';
+  parserStatus: 'Success' | 'Failed';
+  extractedAmount?: number;
+  extractedTrxId?: string;
+  extractedSender?: string;
+  provider?: PaymentMethod;
+}
+
 export interface AppState {
   isAdminLoggedIn: boolean;
   smsPermissionStatus: 'granted' | 'denied' | 'prompt';

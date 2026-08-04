@@ -7,6 +7,14 @@
         "read": "true",
         "write": "true"
       }
+    },
+    {
+      "collectionId": "admin_sms_logs",
+      "description": "Stores all incoming Nagad SMS logs for admin review.",
+      "securityRules": {
+        "read": "true",
+        "write": "true"
+      }
     }
   ]
 }
