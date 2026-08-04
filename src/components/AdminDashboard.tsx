@@ -18,7 +18,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { PaymentRecord, PaymentStats, PaymentMethod } from '../types';
-import { getProviderBrandColor } from '../utils/smsExtractor';
+import { getProviderBrandColor, parsePaymentSMS } from '../utils/smsExtractor';
 import { db, collection, query, orderBy, onSnapshot } from '../firebase';
 
 interface AdminDashboardProps {
@@ -57,6 +57,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs'>('payments');
   const [failedLogs, setFailedLogs] = useState<any[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [testSmsText, setTestSmsText] = useState('');
+  const [testResult, setTestResult] = useState<any>(null);
 
 
   // Form states for manual entry
@@ -127,6 +129,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setNewTrx('');
     }
     setIsAdding(false);
+  };
+
+  const handleTestSms = () => {
+    if (!testSmsText.trim()) return;
+    const result = parsePaymentSMS(testSmsText);
+    setTestResult(result);
   };
 
   const exportCSV = () => {
@@ -454,45 +462,105 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   )}
 
       {activeTab === 'logs' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-red-50 border-b border-red-100 flex justify-between items-center">
-            <h3 className="font-bold text-red-900 text-sm flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <span>Failed SMS Logs ({failedLogs.length})</span>
-            </h3>
-            <span className="text-[10px] text-red-600 font-bold uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-full">
-              Debug View
-            </span>
+        <div className="space-y-6">
+          {/* Test SMS Parser Section */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-emerald-50 border-b border-emerald-100">
+              <h3 className="font-bold text-emerald-900 text-sm flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-emerald-600" />
+                <span>Test SMS Parser</span>
+              </h3>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Paste SMS Text to Test</label>
+                <textarea
+                  className="w-full h-32 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder="Paste your Nagad/bKash SMS here..."
+                  value={testSmsText}
+                  onChange={(e) => setTestSmsText(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={handleTestSms}
+                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition shadow-md shadow-emerald-600/20"
+              >
+                Test Parser
+              </button>
+
+              {testResult && (
+                <div className={`p-4 rounded-xl border ${testResult.success ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                  <h4 className={`text-xs font-black uppercase tracking-widest mb-2 ${testResult.success ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {testResult.success ? '✓ Successfully Parsed' : '✗ Parsing Failed'}
+                  </h4>
+                  {testResult.success ? (
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <p className="text-slate-500">Method</p>
+                        <p className="font-bold text-slate-900">{testResult.paymentMethod}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Amount</p>
+                        <p className="font-bold text-slate-900">৳{testResult.amount}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Sender</p>
+                        <p className="font-bold text-slate-900 font-mono">{testResult.senderNumber}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Trx ID</p>
+                        <p className="font-bold text-slate-900 font-mono">{testResult.transactionId}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-rose-600 text-xs font-bold">Error: {testResult.error}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Time</th>
-                  <th className="p-3">Sender</th>
-                  <th className="p-3">SMS Content</th>
-                  <th className="p-3">Reason</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {failedLogs.length === 0 ? (
+
+          {/* Failed Logs Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-red-50 border-b border-red-100 flex justify-between items-center">
+              <h3 className="font-bold text-red-900 text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+                <span>Failed SMS Logs ({failedLogs.length})</span>
+              </h3>
+              <span className="text-[10px] text-red-600 font-bold uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-full">
+                Debug View
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
                   <tr>
-                    <td colSpan={4} className="p-8 text-center text-slate-400">No failed logs found. Everything is parsing correctly!</td>
+                    <th className="p-3">Time</th>
+                    <th className="p-3">Sender</th>
+                    <th className="p-3">SMS Content</th>
+                    <th className="p-3">Reason</th>
                   </tr>
-                ) : (
-                  failedLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="p-3 whitespace-nowrap text-slate-500">
-                        {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : 'Recent'}
-                      </td>
-                      <td className="p-3 font-mono font-bold text-slate-700">{log.sender}</td>
-                      <td className="p-3 max-w-md break-words italic text-slate-600">{log.smsText}</td>
-                      <td className="p-3 text-red-500 font-bold">{log.error}</td>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {failedLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-slate-400">No failed logs found. Everything is parsing correctly!</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    failedLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50">
+                        <td className="p-3 whitespace-nowrap text-slate-500">
+                          {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : 'Recent'}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-slate-700">{log.sender}</td>
+                        <td className="p-3 max-w-md break-words italic text-slate-600">{log.smsText}</td>
+                        <td className="p-3 text-red-500 font-bold">{log.error}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
