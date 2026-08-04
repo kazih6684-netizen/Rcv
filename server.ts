@@ -46,18 +46,24 @@ app.post('/api/payments/search', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Digits string is required' });
   }
   const queryStr = digits.trim().toLowerCase();
+  console.log(`PAYMENT SEARCH: Query digits [${queryStr}]`);
   
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
-    return (
-      pay.last3DigitsTrx.toLowerCase() === queryStr ||
-      pay.last3DigitsSender.toLowerCase() === queryStr ||
-      pay.transactionId.toLowerCase().endsWith(queryStr) ||
-      pay.senderNumber.toLowerCase().endsWith(queryStr) ||
-      pay.transactionId.toLowerCase().includes(queryStr) ||
-      pay.senderNumber.toLowerCase().includes(queryStr)
-    );
+    const trxMatch = pay.last3DigitsTrx.toLowerCase() === queryStr || pay.transactionId.toLowerCase().endsWith(queryStr) || pay.transactionId.toLowerCase().includes(queryStr);
+    const senderMatch = pay.last3DigitsSender.toLowerCase() === queryStr || pay.senderNumber.toLowerCase().endsWith(queryStr) || pay.senderNumber.toLowerCase().includes(queryStr);
+    
+    if (trxMatch || senderMatch) {
+      console.log(` -> MATCH FOUND: TrxID=${pay.transactionId}, Sender=${pay.senderNumber}, Amount=${pay.amount}`);
+      return true;
+    }
+    return false;
   });
+
+  if (matched.length === 0) {
+    console.log(` -> NO MATCH FOUND for query [${queryStr}]`);
+  }
+
   res.json({
     success: true,
     query: queryStr,
@@ -98,10 +104,11 @@ app.post('/api/sms/parse', async (req, res) => {
     }
     
     console.log(`PAYMENT DETECTOR SUCCESS:`);
-    console.log(` -> Method: ${parseResult.paymentMethod}`);
-    console.log(` -> Amount: ৳${parseResult.amount}`);
-    console.log(` -> TrxID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
-    console.log(` -> Sender Phone: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
+    console.log(` -> Provider Detected: ${parseResult.paymentMethod}`);
+    console.log(` -> Amount Extracted: ৳${parseResult.amount}`);
+    console.log(` -> Balance: ৳${parseResult.balance || 0}`);
+    console.log(` -> Transaction ID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
+    console.log(` -> Sender Number: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
 
     const newPaymentData = {
       amount: parseResult.amount,
@@ -110,6 +117,7 @@ app.post('/api/sms/parse', async (req, res) => {
       last3DigitsSender: parseResult.last3DigitsSender,
       senderNumber: parseResult.senderNumber,
       transactionId: parseResult.transactionId,
+      balance: parseResult.balance || 0,
       dateTime: parseResult.dateTime,
       rawSms: parseResult.rawSms,
       status: 'verified',

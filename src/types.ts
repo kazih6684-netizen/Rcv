@@ -8,6 +8,7 @@ export interface PaymentRecord {
   last3DigitsSender: string;
   senderNumber: string;
   transactionId: string;
+  balance?: number;
   dateTime: string;
   rawSms: string;
   status: 'Success' | 'Pending' | 'Failed';
@@ -22,6 +23,7 @@ export interface SMSParseResult {
   last3DigitsSender?: string;
   senderNumber?: string;
   transactionId?: string;
+  balance?: number;
   dateTime?: string;
   rawSms?: string;
   error?: string;
