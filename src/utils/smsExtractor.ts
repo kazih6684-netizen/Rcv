@@ -25,7 +25,8 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     lowerText.includes('receive money') ||
     lowerText.includes('received money') ||
     lowerText.includes('payment received') ||
-    lowerText.includes('cash in') ||
+    lowerText.includes('uddokta') ||
+    lowerText.includes('nagad') ||
     lowerText.includes('successful') ||
     lowerText.includes('tk');
 
@@ -60,21 +61,35 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // Tertiary identification by patterns if name not explicitly mentioned
   if (!paymentMethod) {
-    if (lowerText.includes("trxid")) paymentMethod = "bKash";
-    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("received amount") || lowerText.includes("money received") || lowerText.includes("receive money") || lowerText.includes("received money") || lowerText.includes("cash in") || lowerText.includes("successful") || lowerText.includes("uddokta") || lowerText.includes("nagad"))) paymentMethod = "Nagad";
-    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("tk.") || lowerText.includes("rocket"))) paymentMethod = "Rocket";
-    else paymentMethod = "bKash"; // Default
+    if (lowerText.includes("trxid")) {
+      paymentMethod = "bKash";
+    } else if (lowerText.includes("txnid") || lowerText.includes("txn id") || lowerText.includes("uddokta") || lowerText.includes("nagad")) {
+      if (lowerText.includes("rocket") || lowerText.includes("tk.")) {
+        paymentMethod = "Rocket";
+      } else {
+        paymentMethod = "Nagad";
+      }
+    } else {
+      paymentMethod = "bKash"; // Default
+    }
   }
 
   // 3. Extract Amount
   // Enhanced regex to capture various formats
   // Matches: Tk 500, Tk. 500, Tk500, Amount: Tk 500, Received Amount: 500, etc.
-  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*(?:Tk)?|Amount:?\s*(?:Tk|BDT)?|Cash In\s*(?:Tk)?|Money Received\s*(?:Tk)?|Tk\s*:|Amount\s*:?)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
+  const amountRegex = /(?:Amount|Received Amount|Cash In|Money Received|Tk|TK|tk|BDT)\s*[:.-]?\s*(?:Tk|BDT)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
   const amountMatch = text.match(amountRegex);
   
   let amount = 0;
   if (amountMatch && amountMatch[1]) {
     amount = parseFloat(amountMatch[1].replace(/,/g, '')) || 0;
+  } else {
+    // Fallback: [Number] Tk/BDT (e.g., 500 Tk, 500.00 TK)
+    const fallbackAmountRegex = /([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:Tk|TK|tk|BDT)/i;
+    const fallbackMatch = text.match(fallbackAmountRegex);
+    if (fallbackMatch && fallbackMatch[1]) {
+      amount = parseFloat(fallbackMatch[1].replace(/,/g, '')) || 0;
+    }
   }
 
   // 4. Extract Transaction ID
