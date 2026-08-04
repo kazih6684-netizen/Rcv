@@ -68,26 +68,25 @@ app.post('/api/payments/search', async (req, res) => {
 
 // Parse SMS & Auto-Add to DB
 app.post('/api/sms/parse', async (req, res) => {
-  console.log("DEBUG: Received SMS Parse Request");
-  console.log("DEBUG: Request Body:", JSON.stringify(req.body));
+  console.log("-----------------------------------------");
+  console.log("PAYMENT DETECTOR: Received Request");
   
   const smsText = req.body.smsText || req.body.sms_message || req.body.body || req.body.message || req.body.text;
   const sender = req.body.sender || req.body.from || req.body.number || req.body.address || req.body.sms_number;
   
   if (!smsText || typeof smsText !== 'string') {
-    console.log("DEBUG: SMS text not found in request body");
+    console.log("PAYMENT DETECTOR ERROR: SMS text not found");
     return res.status(400).json({ success: false, message: 'SMS text is required' });
   }
 
-  console.log("DEBUG: SMS Text:", smsText);
-  console.log("DEBUG: SMS Sender:", sender);
+  console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}]`);
+  console.log(`PAYMENT DETECTOR: Content: "${smsText}"`);
   
   try {
     const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
-    console.log("DEBUG: Parse Result:", JSON.stringify(parseResult));
-
+    
     if (!parseResult.success) {
-      console.log("DEBUG: Parse failed:", parseResult.error);
+      console.log(`PAYMENT DETECTOR FAIL: ${parseResult.error}`);
       // Log failed parse attempts for debugging
       await addDoc(collection(db, 'failed_parse_logs'), {
         smsText,
@@ -98,6 +97,12 @@ app.post('/api/sms/parse', async (req, res) => {
       return res.status(400).json({ success: false, message: parseResult.error });
     }
     
+    console.log(`PAYMENT DETECTOR SUCCESS:`);
+    console.log(` -> Method: ${parseResult.paymentMethod}`);
+    console.log(` -> Amount: ৳${parseResult.amount}`);
+    console.log(` -> TrxID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
+    console.log(` -> Sender Phone: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
+
     const newPaymentData = {
       amount: parseResult.amount,
       paymentMethod: parseResult.paymentMethod,
@@ -112,7 +117,9 @@ app.post('/api/sms/parse', async (req, res) => {
     };
 
     const docRef = await addDoc(collection(db, 'payments'), newPaymentData);
-    console.log("DEBUG: Saved to Firestore with ID:", docRef.id);
+    console.log(`PAYMENT DETECTOR: Saved to Firestore with ID: ${docRef.id}`);
+    console.log("-----------------------------------------");
+    
     const newPayment = { id: docRef.id, ...newPaymentData };
     res.json({
       success: true,
@@ -120,7 +127,7 @@ app.post('/api/sms/parse', async (req, res) => {
       payment: newPayment,
     });
   } catch (err) {
-    console.error("DEBUG: Error processing SMS", err);
+    console.error("PAYMENT DETECTOR ERROR: Exception during processing", err);
     res.status(500).json({ success: false, message: 'Failed to process SMS' });
   }
 });

@@ -63,7 +63,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   if (!paymentMethod) {
     if (lowerText.includes("trxid")) {
       paymentMethod = "bKash";
-    } else if (lowerText.includes("txnid") || lowerText.includes("txn id") || lowerText.includes("uddokta") || lowerText.includes("nagad")) {
+    } else if (lowerText.includes("txnid") || lowerText.includes("txn id") || lowerText.includes("uddokta") || lowerText.includes("nagad") || lowerText.includes("sender:")) {
       if (lowerText.includes("rocket") || lowerText.includes("tk.")) {
         paymentMethod = "Rocket";
       } else {
@@ -94,7 +94,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // 4. Extract Transaction ID
   // Matches: TrxID 9A8B7C6D5E, TxnID: 7X8Y9Z0A, TxnId: 123456, ID: 12345, Transaction ID: ...
-  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx)\s*:?\s*([A-Z0-9]{6,16})/i;
+  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx|Txn)\s*[:.-]?\s*([A-Z0-9]{6,16})/i;
   const trxMatch = text.match(trxRegex);
 
   let transactionId = '';
@@ -104,8 +104,8 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // 5. Extract Sender Number
   let senderNumber = '';
-  // Pattern 1: Search for numbers in "from", "Sender", "number", "A/C", "Uddokta", "Agent" patterns
-  const fromMatch = text.match(/(?:from|Sender:?|number:?|A\/C:?\*?|Uddokta:?|Agent:?|Customer:?)\s*:?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
+  // Pattern 1: Search for numbers in "from", "Sender", "number", "A/C", "Uddokta", "Agent", "Customer" patterns
+  const fromMatch = text.match(/(?:from|Sender|number|A\/C|Uddokta|Agent|Customer|From)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
   if (fromMatch && fromMatch[1]) {
     senderNumber = fromMatch[1].trim();
   } else {
