@@ -1,12 +1,95 @@
 {
-  "collections": [
-    {
-      "collectionId": "payments",
-      "description": "Stores all incoming payments.",
-      "securityRules": {
-        "read": "true",
-        "write": "true"
+  "entities": {
+    "AdminSmsLog": {
+      "title": "Admin SMS Log",
+      "description": "Raw incoming SMS logs for auditing.",
+      "type": "object",
+      "properties": {
+        "smsText": { "type": "string" },
+        "sender": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "receivedAt": { "type": "string" }
+      },
+      "required": ["smsText", "sender", "timestamp", "receivedAt"]
+    },
+    "FailedParseLog": {
+      "title": "Failed Parse Log",
+      "description": "Records of SMS that failed to parse.",
+      "type": "object",
+      "properties": {
+        "smsText": { "type": "string" },
+        "sender": { "type": "string" },
+        "error": { "type": "string" },
+        "provider": { "type": "string" },
+        "debug": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "receivedAt": { "type": "string" }
+      },
+      "required": ["smsText", "sender", "error", "timestamp", "receivedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Parsed and validated payments.",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "senderNumber": { "type": "string" },
+        "last3DigitsTrx": { "type": "string" },
+        "last3DigitsSender": { "type": "string" },
+        "status": { "type": "string", "enum": ["UNMATCHED", "MATCHED", "MANUAL_CONFIRMED"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PendingPayment": {
+      "title": "Pending Payment",
+      "description": "User-initiated payment requests waiting for SMS confirmation.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "last3DigitsTrx": { "type": "string" },
+        "last3DigitsSender": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "CONFIRMED", "REJECTED"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PaymentMatchLog": {
+      "title": "Payment Match Log",
+      "description": "Audit trail of matching decisions.",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string" },
+        "pendingPaymentId": { "type": "string" },
+        "matchType": { "type": "string" },
+        "matchScore": { "type": "number" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
       }
     }
-  ]
+  },
+  "firestore": {
+    "/admin_sms_logs/{logId}": {
+      "schema": "AdminSmsLog",
+      "description": "Audit trail of all raw SMS."
+    },
+    "/failed_parse_logs/{logId}": {
+      "schema": "FailedParseLog",
+      "description": "Logs of SMS parsing failures."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Validated and processed payments."
+    },
+    "/pending_payments/{requestId}": {
+      "schema": "PendingPayment",
+      "description": "User requests awaiting confirmation."
+    },
+    "/payment_match_logs/{matchId}": {
+      "schema": "PaymentMatchLog",
+      "description": "History of payment matching logic results."
+    }
+  }
 }

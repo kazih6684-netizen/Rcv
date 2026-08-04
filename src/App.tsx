@@ -5,7 +5,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { SmsSimulator } from './components/SmsSimulator';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { ApkDownload } from './components/ApkDownload';
-import { PaymentRecord, PaymentStats, PaymentMethod } from './types';
+import { Payment, PaymentStats, PaymentMethod } from './types';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'search' | 'admin' | 'simulator' | 'apk'>('search');
@@ -14,7 +14,7 @@ export default function App() {
   const [smsPermissionGranted, setSmsPermissionGranted] = useState<boolean>(true);
   const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
 
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<PaymentStats | null>(null);
 
   // Fetch initial data
@@ -52,7 +52,7 @@ export default function App() {
   };
 
   // Search API Call
-  const handleSearch = async (digits: string): Promise<PaymentRecord[]> => {
+  const handleSearch = async (digits: string): Promise<Payment[]> => {
     try {
       const res = await fetch('/api/payments/search', {
         method: 'POST',
@@ -128,7 +128,7 @@ export default function App() {
   };
 
   // Parse SMS & Auto Save
-  const handleParseAndSaveSMS = async (smsText: string): Promise<PaymentRecord | null> => {
+  const handleParseAndSaveSMS = async (smsText: string): Promise<Payment | null> => {
     try {
       const res = await fetch('/api/sms/parse', {
         method: 'POST',
