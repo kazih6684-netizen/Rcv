@@ -82,39 +82,46 @@ app.post('/api/sms/parse', async (req, res) => {
   console.log("DEBUG: SMS Text:", smsText);
   console.log("DEBUG: SMS Sender:", sender);
   
-  const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
-  console.log("DEBUG: Parse Result:", JSON.stringify(parseResult));
-
-  if (!parseResult.success) {
-    console.log("DEBUG: Parse failed:", parseResult.error);
-    return res.status(400).json({ success: false, message: parseResult.error });
-  }
-  
-  const newPaymentData = {
-    amount: parseResult.amount || 0,
-    paymentMethod: parseResult.paymentMethod || 'bKash',
-    last3DigitsTrx: parseResult.last3DigitsTrx || '000',
-    last3DigitsSender: parseResult.last3DigitsSender || '000',
-    senderNumber: parseResult.senderNumber || '01700000000',
-    transactionId: parseResult.transactionId || 'TRXUNKNOWN',
-    dateTime: parseResult.dateTime || new Date().toLocaleString(),
-    rawSms: parseResult.rawSms || smsText,
-    status: 'Success',
-    createdAt: new Date().toISOString(),
-  };
-
   try {
+    const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
+    console.log("DEBUG: Parse Result:", JSON.stringify(parseResult));
+
+    if (!parseResult.success) {
+      console.log("DEBUG: Parse failed:", parseResult.error);
+      // Log failed parse attempts for debugging
+      await addDoc(collection(db, 'failed_parse_logs'), {
+        smsText,
+        sender: sender || 'Unknown',
+        error: parseResult.error,
+        timestamp: serverTimestamp(),
+      });
+      return res.status(400).json({ success: false, message: parseResult.error });
+    }
+    
+    const newPaymentData = {
+      amount: parseResult.amount,
+      paymentMethod: parseResult.paymentMethod,
+      last3DigitsTrx: parseResult.last3DigitsTrx,
+      last3DigitsSender: parseResult.last3DigitsSender,
+      senderNumber: parseResult.senderNumber,
+      transactionId: parseResult.transactionId,
+      dateTime: parseResult.dateTime,
+      rawSms: parseResult.rawSms,
+      status: 'verified',
+      createdAt: serverTimestamp(),
+    };
+
     const docRef = await addDoc(collection(db, 'payments'), newPaymentData);
     console.log("DEBUG: Saved to Firestore with ID:", docRef.id);
     const newPayment = { id: docRef.id, ...newPaymentData };
     res.json({
       success: true,
-      message: 'Payment extracted & saved successfully',
+      message: 'Payment parsed and saved successfully',
       payment: newPayment,
     });
   } catch (err) {
-    console.error("DEBUG: Error adding document", err);
-    res.status(500).json({ success: false, message: 'Failed to save to database' });
+    console.error("DEBUG: Error processing SMS", err);
+    res.status(500).json({ success: false, message: 'Failed to process SMS' });
   }
 });
 

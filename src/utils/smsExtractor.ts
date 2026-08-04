@@ -24,7 +24,9 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     lowerText.includes('money received') || 
     lowerText.includes('payment received') ||
     lowerText.includes('npsb received') ||
-    lowerText.includes('ibanking deposit');
+    lowerText.includes('ibanking deposit') ||
+    lowerText.includes('successful') ||
+    lowerText.includes('tk');
 
   if (!isPaymentSuccess) {
     // If it doesn't sound like a "Received" message, check if it's one of the skip keywords
@@ -58,15 +60,15 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   // Tertiary identification by patterns if name not explicitly mentioned
   if (!paymentMethod) {
     if (lowerText.includes("trxid")) paymentMethod = "bKash";
-    else if (lowerText.includes("txnid") && (lowerText.includes("received amount") || lowerText.includes("money received"))) paymentMethod = "Nagad";
-    else if (lowerText.includes("txnid") && (lowerText.includes("tk."))) paymentMethod = "Rocket";
+    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("received amount") || lowerText.includes("money received") || lowerText.includes("successful"))) paymentMethod = "Nagad";
+    else if ((lowerText.includes("txnid") || lowerText.includes("txn id")) && (lowerText.includes("tk.") || lowerText.includes("rocket"))) paymentMethod = "Rocket";
     else paymentMethod = "bKash"; // Default
   }
 
   // 3. Extract Amount
   // Enhanced regex to capture various formats
   // Matches: Tk 500, Tk. 500, Tk500, Amount: Tk 500, Received Amount: 500, etc.
-  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*(?:Tk)?|Amount:?\s*(?:Tk|BDT)?|Cash In\s*(?:Tk)?|Tk\s*:)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
+  const amountRegex = /(?:Tk|TK|tk|Tk\.|TK\.|Received Amount:?\s*(?:Tk)?|Amount:?\s*(?:Tk|BDT)?|Cash In\s*(?:Tk)?|Money Received\s*(?:Tk)?|Tk\s*:)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
   const amountMatch = text.match(amountRegex);
   
   let amount = 0;
