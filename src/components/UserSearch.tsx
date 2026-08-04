@@ -13,17 +13,17 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Payment } from '../types';
+import { PaymentRecord } from '../types';
 import { getProviderBrandColor } from '../utils/smsExtractor';
 
 interface UserSearchProps {
-  onSearch: (digits: string) => Promise<Payment[]>;
+  onSearch: (digits: string) => Promise<PaymentRecord[]>;
 }
 
 export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
   const [digits, setDigits] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [searchResults, setSearchResults] = useState<Payment[] | null>(null);
+  const [searchResults, setSearchResults] = useState<PaymentRecord[] | null>(null);
   const [searchedQuery, setSearchedQuery] = useState<string>('');
   const [hasSearched, setHasSearched] = useState<boolean>(false);
 

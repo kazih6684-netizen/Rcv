@@ -17,12 +17,12 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
-import { Payment, PaymentStats, PaymentMethod } from '../types';
+import { PaymentRecord, PaymentStats, PaymentMethod } from '../types';
 import { getProviderBrandColor, parsePaymentSMS } from '../utils/smsExtractor';
-import { db, collection, query, orderBy, onSnapshot, limit } from '../firebase';
+import { db, collection, query, orderBy, onSnapshot } from '../firebase';
 
 interface AdminDashboardProps {
-  payments: Payment[];
+  payments: PaymentRecord[];
   stats: PaymentStats | null;
   onRefresh: () => void;
   onDeletePayment: (id: string) => Promise<boolean>;
@@ -54,13 +54,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs' | 'inbox' | 'matches'>('payments');
+  const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs'>('payments');
   const [failedLogs, setFailedLogs] = useState<any[]>([]);
-  const [adminSmsLogs, setAdminSmsLogs] = useState<any[]>([]);
-  const [matchLogs, setMatchLogs] = useState<any[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [testSmsText, setTestSmsText] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
+
 
   // Form states for manual entry
   const [newAmount, setNewAmount] = useState<string>('');
@@ -101,32 +100,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (activeTab === 'logs') {
       setIsLoadingLogs(true);
-      const q = query(collection(db, 'failed_parse_logs'), orderBy('timestamp', 'desc'), limit(50));
+      const q = query(collection(db, 'failed_parse_logs'), orderBy('timestamp', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setFailedLogs(logs);
-        setIsLoadingLogs(false);
-      });
-      return () => unsubscribe();
-    }
-    
-    if (activeTab === 'inbox') {
-      setIsLoadingLogs(true);
-      const q = query(collection(db, 'admin_sms_logs'), orderBy('timestamp', 'desc'), limit(50));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setAdminSmsLogs(logs);
-        setIsLoadingLogs(false);
-      });
-      return () => unsubscribe();
-    }
-
-    if (activeTab === 'matches') {
-      setIsLoadingLogs(true);
-      const q = query(collection(db, 'payment_match_logs'), orderBy('timestamp', 'desc'), limit(50));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMatchLogs(logs);
         setIsLoadingLogs(false);
       });
       return () => unsubscribe();
@@ -368,23 +345,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               activeTab === 'logs' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Failed Parses
-          </button>
-          <button
-            onClick={() => setActiveTab('inbox')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
-              activeTab === 'inbox' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            SMS Inbox
-          </button>
-          <button
-            onClick={() => setActiveTab('matches')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
-              activeTab === 'matches' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Match Logs
+            Failed SMS Logs
           </button>
         </div>
       </div>
@@ -600,84 +561,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'inbox' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
-            <h3 className="font-bold text-blue-900 text-sm flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-blue-600" />
-              <span>Admin SMS Inbox ({adminSmsLogs.length})</span>
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Time</th>
-                  <th className="p-3">Sender</th>
-                  <th className="p-3">SMS Content</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {adminSmsLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="p-8 text-center text-slate-400">No raw SMS logs found.</td>
-                  </tr>
-                ) : (
-                  adminSmsLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="p-3 whitespace-nowrap text-slate-500">{log.receivedAt}</td>
-                      <td className="p-3 font-mono font-bold text-slate-700">{log.sender}</td>
-                      <td className="p-3 break-words text-slate-600">{log.smsText}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'matches' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex justify-between items-center">
-            <h3 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-              <span>Payment Match Logs ({matchLogs.length})</span>
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Time</th>
-                  <th className="p-3">Match Type</th>
-                  <th className="p-3">Score</th>
-                  <th className="p-3">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {matchLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center text-slate-400">No match logs found.</td>
-                  </tr>
-                ) : (
-                  matchLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="p-3 whitespace-nowrap text-slate-500">
-                        {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : 'Recent'}
-                      </td>
-                      <td className="p-3 font-bold text-slate-700">{log.matchType}</td>
-                      <td className="p-3 font-bold text-indigo-600">{log.matchScore}%</td>
-                      <td className="p-3 text-slate-600">{log.details}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
           </div>
         </div>
       )}

@@ -1,375 +1,233 @@
-import express from "express";
-import path from "path";
-import fs from "fs";
-import { createServer as createViteServer } from "vite";
-import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs, 
-  updateDoc, 
-  doc, 
-  serverTimestamp,
-  orderBy,
-  limit
-} from "firebase/firestore";
-import { parsePaymentSMS } from "./src/utils/smsExtractor";
+import express from 'express';
+import path from 'path';
+import { createServer as createViteServer } from 'vite';
+import { parsePaymentSMS } from './src/utils/smsExtractor.js';
+import { PaymentRecord, PaymentStats } from './src/types.js';
 
-// Read Firebase config manually for safety
-const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
-const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"));
+import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp } from './src/firebase.js';
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Helper function to get all payments from Firestore
+async function fetchAllPayments(): Promise<PaymentRecord[]> {
   try {
-    // Initialize Firebase inside startServer
-    const firebaseApp = initializeApp(firebaseConfig);
-    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
-    console.log(`[FIREBASE] Initializing with DB ID: ${dbId}`);
-    const db = getFirestore(firebaseApp, dbId);
-
-    app.use(express.json());
-
-    // API: Health Check
-    app.get("/api/health", async (req, res) => {
-      try {
-        // Test firestore connection
-        const testSnapshot = await getDocs(query(collection(db, 'payments'), limit(1)));
-        res.json({ 
-          status: "ok", 
-          firestore: "connected",
-          dbId: dbId,
-          timestamp: new Date().toISOString() 
-        });
-      } catch (err: any) {
-        res.status(500).json({ 
-          status: "error", 
-          firestore: "failed",
-          error: err.message,
-          timestamp: new Date().toISOString() 
-        });
-      }
+    const q = query(collection(db, 'payments'), orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    const payments: PaymentRecord[] = [];
+    querySnapshot.forEach((doc) => {
+      payments.push({ id: doc.id, ...doc.data() } as PaymentRecord);
     });
+    return payments;
+  } catch (err) {
+    console.error("Error fetching payments", err);
+    return [];
+  }
+}
 
-    // ... rest of the routes ...
+// Health endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', serverTime: new Date().toISOString() });
+});
 
-  /**
-   * CORE API: SMS Processing Pipeline
-   * 1. Log Raw SMS (Auditing)
-   * 2. Detect & Parse SMS
-   * 3. Handle Parse Failure (Logging)
-   * 4. Perform Payment Matching
-   * 5. Record Result (Success/Log)
-   */
-  app.post("/api/sms/parse", async (req, res) => {
-    const { smsText, sender, timestamp } = req.body;
+// Get all payments
+app.get('/api/payments', async (req, res) => {
+  const sorted = await fetchAllPayments();
+  res.json({ success: true, payments: sorted });
+});
 
-    if (!smsText) {
-      return res.status(400).json({ success: false, message: 'smsText is required' });
-    }
+// Search payments by last 3 digits or full transaction/sender
+app.post('/api/payments/search', async (req, res) => {
+  const { digits } = req.body;
+  if (!digits || typeof digits !== 'string') {
+    return res.status(400).json({ success: false, message: 'Digits string is required' });
+  }
+  const queryStr = digits.trim().toLowerCase();
+  
+  const paymentsDatabase = await fetchAllPayments();
+  const matched = paymentsDatabase.filter((pay) => {
+    return (
+      pay.last3DigitsTrx.toLowerCase() === queryStr ||
+      pay.last3DigitsSender.toLowerCase() === queryStr ||
+      pay.transactionId.toLowerCase().endsWith(queryStr) ||
+      pay.senderNumber.toLowerCase().endsWith(queryStr) ||
+      pay.transactionId.toLowerCase().includes(queryStr) ||
+      pay.senderNumber.toLowerCase().includes(queryStr)
+    );
+  });
+  res.json({
+    success: true,
+    query: queryStr,
+    count: matched.length,
+    matchedPayments: matched,
+  });
+});
 
-    console.log(`[PIPELINE] Incoming SMS from ${sender || 'Unknown'}`);
+// Parse SMS & Auto-Add to DB
+app.post('/api/sms/parse', async (req, res) => {
+  console.log("DEBUG: Received SMS Parse Request");
+  console.log("DEBUG: Request Body:", JSON.stringify(req.body));
+  
+  const smsText = req.body.smsText || req.body.sms_message || req.body.body || req.body.message || req.body.text;
+  const sender = req.body.sender || req.body.from || req.body.number || req.body.address || req.body.sms_number;
+  
+  if (!smsText || typeof smsText !== 'string') {
+    console.log("DEBUG: SMS text not found in request body");
+    return res.status(400).json({ success: false, message: 'SMS text is required' });
+  }
 
-    // STEP 1: Immediate Audit Log (Admin SMS Logs)
-    let adminLogId = '';
-    try {
-      const logRef = await addDoc(collection(db, 'admin_sms_logs'), {
+  // LOG ALL INCOMING SMS for debugging (requested by user as admin_sms_logs)
+  try {
+    await addDoc(collection(db, 'admin_sms_logs'), {
+      smsText,
+      sender: sender || 'Unknown',
+      timestamp: serverTimestamp(),
+      receivedAt: new Date().toISOString(),
+    });
+  } catch (logErr) {
+    console.error("DEBUG: Failed to log to admin_sms_logs", logErr);
+  }
+
+  console.log("DEBUG: SMS Text:", smsText);
+  console.log("DEBUG: SMS Sender:", sender);
+  
+  try {
+    const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
+    console.log("DEBUG: Parse Result:", JSON.stringify(parseResult));
+
+    if (!parseResult.success) {
+      console.log("DEBUG: Parse failed:", parseResult.error);
+      // Log failed parse attempts for debugging
+      await addDoc(collection(db, 'failed_parse_logs'), {
         smsText,
         sender: sender || 'Unknown',
-        receivedAt: new Date().toISOString(),
-        timestamp: serverTimestamp()
+        error: parseResult.error,
+        timestamp: serverTimestamp(),
       });
-      adminLogId = logRef.id;
-    } catch (err) {
-      console.error("[PIPELINE ERROR] Admin Log Failed:", err);
+      return res.status(400).json({ success: false, message: parseResult.error });
     }
-
-    // STEP 2: Detect & Parse
-    const parseResult = parsePaymentSMS(smsText, sender);
-
-    // STEP 3: Handle Parse Failure
-    if (!parseResult.success) {
-      console.log(`[PIPELINE] Parse Failed: ${parseResult.error}`);
-      try {
-        await addDoc(collection(db, 'failed_parse_logs'), {
-          smsText,
-          sender: sender || 'Unknown',
-          error: parseResult.error,
-          debug: parseResult.debug || null,
-          adminLogId,
-          receivedAt: new Date().toISOString(),
-          timestamp: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("[PIPELINE ERROR] Failed Parse Log Error:", err);
-      }
-      return res.status(400).json({ success: false, message: parseResult.error, debug: parseResult.debug });
-    }
-
-    // STEP 4: Successful Parse - Now Match Payment
-    console.log(`[PIPELINE] Parse Success: ${parseResult.paymentMethod} | ${parseResult.amount} | ${parseResult.transactionId}`);
-
-    const paymentData = {
+    
+    const newPaymentData = {
       amount: parseResult.amount,
       paymentMethod: parseResult.paymentMethod,
-      transactionId: parseResult.transactionId,
-      senderNumber: parseResult.senderNumber,
       last3DigitsTrx: parseResult.last3DigitsTrx,
       last3DigitsSender: parseResult.last3DigitsSender,
-      rawSms: smsText,
-      status: 'UNMATCHED', // Default until matched
-      timestamp: serverTimestamp(),
-      debug: parseResult.debug
+      senderNumber: parseResult.senderNumber,
+      transactionId: parseResult.transactionId,
+      dateTime: parseResult.dateTime,
+      rawSms: parseResult.rawSms,
+      status: 'verified',
+      createdAt: serverTimestamp(),
     };
 
-    try {
-      // Create Payment Document
-      const paymentRef = await addDoc(collection(db, 'payments'), paymentData);
-      const paymentId = paymentRef.id;
+    const docRef = await addDoc(collection(db, 'payments'), newPaymentData);
+    console.log("DEBUG: Saved to Firestore with ID:", docRef.id);
+    const newPayment = { id: docRef.id, ...newPaymentData };
+    res.json({
+      success: true,
+      message: 'Payment parsed and saved successfully',
+      payment: newPayment,
+    });
+  } catch (err) {
+    console.error("DEBUG: Error processing SMS", err);
+    res.status(500).json({ success: false, message: 'Failed to process SMS' });
+  }
+});
 
-      // START MATCHING LOGIC
-      // 1. Search for pending payments with matching criteria
-      const pendingRef = collection(db, 'pending_payments');
-      
-      // Match Strategy A: Amount + Last 3 of TrxID
-      let matchQuery = query(
-        pendingRef, 
-        where('status', '==', 'PENDING'),
-        where('amount', '==', parseResult.amount),
-        where('last3DigitsTrx', '==', parseResult.last3DigitsTrx)
-      );
-      
-      let matchDocs = await getDocs(matchQuery);
-      let matchType = 'TRX_ID';
-      
-      // Match Strategy B: Amount + Last 3 of Sender (if A fails)
-      if (matchDocs.empty) {
-        matchQuery = query(
-          pendingRef,
-          where('status', '==', 'PENDING'),
-          where('amount', '==', parseResult.amount),
-          where('last3DigitsSender', '==', parseResult.last3DigitsSender)
-        );
-        matchDocs = await getDocs(matchQuery);
-        matchType = 'SENDER_PHONE';
+// Create payment manually by admin
+app.post('/api/payments', async (req, res) => {
+  const { amount, paymentMethod, senderNumber, transactionId } = req.body;
+  if (!amount || !paymentMethod || !senderNumber || !transactionId) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+  const cleanSender = String(senderNumber).trim();
+  const cleanTrx = String(transactionId).trim().toUpperCase();
+  
+  const newPaymentData = {
+    amount: Number(amount) || 0,
+    paymentMethod: paymentMethod,
+    last3DigitsTrx: cleanTrx.slice(-3),
+    last3DigitsSender: cleanSender.slice(-3),
+    senderNumber: cleanSender,
+    transactionId: cleanTrx,
+    dateTime: `${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
+    rawSms: `Manual Payment Entry: Tk ${amount} from ${cleanSender}. TrxID: ${cleanTrx}`,
+    status: 'verified',
+    createdAt: serverTimestamp(),
+  };
+
+  try {
+    const docRef = await addDoc(collection(db, 'payments'), newPaymentData);
+    res.json({ success: true, payment: { id: docRef.id, ...newPaymentData } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to save to database' });
+  }
+});
+
+// Delete single payment
+app.delete('/api/payments/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await deleteDoc(doc(db, 'payments', id));
+    res.json({ success: true, message: 'Payment deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to delete payment' });
+  }
+});
+
+// Reset / Clear database
+app.delete('/api/payments/clear-all', async (req, res) => {
+  try {
+    const paymentsDatabase = await fetchAllPayments();
+    for (const p of paymentsDatabase) {
+      if (p.id) {
+        await deleteDoc(doc(db, 'payments', p.id));
       }
-
-      // If matched, confirm payment
-      if (!matchDocs.empty) {
-        const pendingDoc = matchDocs.docs[0];
-        const pendingId = pendingDoc.id;
-
-        // Update Pending Request
-        await updateDoc(doc(db, 'pending_payments', pendingId), {
-          status: 'CONFIRMED',
-          confirmedAt: serverTimestamp(),
-          paymentId: paymentId
-        });
-
-        // Update Payment Status
-        await updateDoc(doc(db, 'payments', paymentId), {
-          status: 'MATCHED'
-        });
-
-        // Log the Match Decision
-        await addDoc(collection(db, 'payment_match_logs'), {
-          paymentId,
-          pendingPaymentId: pendingId,
-          matchType,
-          matchScore: 100,
-          details: `Automatic match found using ${matchType} and Amount ${parseResult.amount}`,
-          timestamp: serverTimestamp()
-        });
-
-        console.log(`[PIPELINE] MATCH FOUND: Payment ${paymentId} matched to Pending ${pendingId}`);
-      } else {
-        // Log "No Match Found" decision
-        await addDoc(collection(db, 'payment_match_logs'), {
-          paymentId,
-          matchType: 'NONE',
-          matchScore: 0,
-          details: `No pending payment found for Amount ${parseResult.amount} and Trx/Sender suffix match.`,
-          timestamp: serverTimestamp()
-        });
-        console.log(`[PIPELINE] NO MATCH FOUND for Payment ${paymentId}`);
-      }
-
-      return res.status(200).json({ 
-        success: true, 
-        paymentId,
-        matchFound: !matchDocs.empty,
-        payment: { id: paymentId, ...paymentData }, // Return the payment object as expected by App.tsx
-        data: parseResult 
-      });
-
-    } catch (err) {
-      console.error("[PIPELINE ERROR] Database Error:", err);
-      return res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
+    res.json({ success: true, message: 'All payments cleared' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to clear payments' });
+  }
+});
+
+// Stats summary endpoint
+app.get('/api/stats', async (req, res) => {
+  const paymentsDatabase = await fetchAllPayments();
+  const totalPayments = paymentsDatabase.length;
+  const totalVolume = paymentsDatabase.reduce((acc, curr) => acc + curr.amount, 0);
+  const todayStr = new Date().toLocaleDateString('en-GB');
+  
+  const todayRecords = paymentsDatabase.filter((p) => {
+    return p.dateTime.includes(todayStr) || new Date(p.createdAt).toDateString() === new Date().toDateString();
   });
+  const todayPayments = todayRecords.length;
+  const todayVolume = todayRecords.reduce((acc, curr) => acc + curr.amount, 0);
+  
+  const byMethod = {
+    bKash: paymentsDatabase.filter((p) => p.paymentMethod === 'bKash').length,
+    Nagad: paymentsDatabase.filter((p) => p.paymentMethod === 'Nagad').length,
+    Rocket: paymentsDatabase.filter((p) => p.paymentMethod === 'Rocket').length,
+    Upay: paymentsDatabase.filter((p) => p.paymentMethod === 'Upay').length,
+  };
+  
+  const stats: PaymentStats = {
+    totalPayments,
+    todayPayments,
+    totalVolume,
+    todayVolume,
+    byMethod,
+  };
+  res.json({ success: true, stats });
+});
 
-  // API: Get All Payments
-  app.get("/api/payments", async (req, res) => {
-    try {
-      const q = query(collection(db, 'payments'), orderBy('timestamp', 'desc'), limit(100));
-      const snapshot = await getDocs(q);
-      const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json({ success: true, payments });
-    } catch (err) {
-      console.error("Fetch payments error:", err);
-      res.status(500).json({ success: false, message: "Failed to fetch payments" });
-    }
-  });
-
-  // API: Get Stats
-  app.get("/api/stats", async (req, res) => {
-    try {
-      const snapshot = await getDocs(collection(db, 'payments'));
-      const payments = snapshot.docs.map(doc => doc.data());
-      
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
-      
-      let totalVolume = 0;
-      let todayVolume = 0;
-      let todayCount = 0;
-      const byMethod = { bKash: 0, Nagad: 0, Rocket: 0, Upay: 0 };
-
-      payments.forEach((p: any) => {
-        const amount = Number(p.amount) || 0;
-        totalVolume += amount;
-        
-        if (p.paymentMethod && byMethod[p.paymentMethod as keyof typeof byMethod] !== undefined) {
-          byMethod[p.paymentMethod as keyof typeof byMethod]++;
-        }
-
-        // Check if today (simple comparison for demo)
-        if (p.timestamp && p.timestamp.toDate) {
-          const date = p.timestamp.toDate();
-          if (date.toISOString().split('T')[0] === todayStr) {
-            todayVolume += amount;
-            todayCount++;
-          }
-        }
-      });
-
-      const stats = {
-        totalPayments: payments.length,
-        todayPayments: todayCount,
-        totalVolume,
-        todayVolume,
-        byMethod
-      };
-
-      res.json({ success: true, stats });
-    } catch (err) {
-      console.error("Fetch stats error:", err);
-      res.status(500).json({ success: false, message: "Failed to fetch stats" });
-    }
-  });
-
-  // API: Search Payments
-  app.post("/api/payments/search", async (req, res) => {
-    const { digits } = req.body;
-    if (!digits || digits.length < 3) {
-      return res.status(400).json({ success: false, message: "Minimum 3 digits required" });
-    }
-
-    try {
-      // Since Firestore doesn't support partial string matching across fields easily,
-      // we'll fetch recent payments and filter in memory for this demo.
-      // In production, one might use a dedicated search index.
-      const snapshot = await getDocs(collection(db, 'payments'));
-      const allPayments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      const matchedPayments = allPayments.filter((p: any) => {
-        const q = digits.toLowerCase();
-        return (
-          p.last3DigitsTrx?.includes(q) ||
-          p.last3DigitsSender?.includes(q) ||
-          p.transactionId?.toLowerCase().includes(q) ||
-          p.senderNumber?.includes(q)
-        );
-      });
-
-      res.json({ success: true, matchedPayments });
-    } catch (err) {
-      console.error("Search error:", err);
-      res.status(500).json({ success: false, message: "Search failed" });
-    }
-  });
-
-  // API: Add Manual Payment
-  app.post("/api/payments", async (req, res) => {
-    const { amount, paymentMethod, senderNumber, transactionId } = req.body;
-    
-    if (!amount || !paymentMethod || !transactionId) {
-      return res.status(400).json({ success: false, message: "Missing required fields" });
-    }
-
-    try {
-      const last3Trx = transactionId.slice(-3);
-      const last3Sender = (senderNumber || "").slice(-3);
-
-      const paymentData = {
-        amount: Number(amount),
-        paymentMethod,
-        transactionId,
-        senderNumber: senderNumber || "MANUAL",
-        last3DigitsTrx: last3Trx,
-        last3DigitsSender: last3Sender,
-        status: 'MANUAL_CONFIRMED',
-        timestamp: serverTimestamp(),
-        rawSms: "Manually entered by admin"
-      };
-
-      const docRef = await addDoc(collection(db, 'payments'), paymentData);
-      res.json({ success: true, id: docRef.id });
-    } catch (err) {
-      console.error("Add manual payment error:", err);
-      res.status(500).json({ success: false, message: "Failed to add payment" });
-    }
-  });
-
-  // API: Delete Payment
-  app.delete("/api/payments/:id", async (req, res) => {
-    const { id } = req.params;
-    try {
-      await updateDoc(doc(db, 'payments', id), { deleted: true }); // Soft delete or actual delete
-      // Actually delete for this app
-      const { deleteDoc } = await import("firebase/firestore");
-      await deleteDoc(doc(db, 'payments', id));
-      res.json({ success: true });
-    } catch (err) {
-      console.error("Delete payment error:", err);
-      res.status(500).json({ success: false, message: "Failed to delete payment" });
-    }
-  });
-
-  // API: Clear All Payments
-  app.delete("/api/payments/clear-all", async (req, res) => {
-    try {
-      const snapshot = await getDocs(collection(db, 'payments'));
-      const { deleteDoc } = await import("firebase/firestore");
-      const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
-      await Promise.all(deletePromises);
-      res.json({ success: true });
-    } catch (err) {
-      console.error("Clear all error:", err);
-      res.status(500).json({ success: false, message: "Failed to clear payments" });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
@@ -379,13 +237,9 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Unity Earning Payment Confirm System running on http://0.0.0.0:${PORT}`);
   });
-  } catch (err: any) {
-    console.error("[CRITICAL ERROR] Server failed to start:", err);
-  }
 }
 
 startServer();
