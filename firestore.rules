@@ -4,5 +4,11 @@ service cloud.firestore {
     match /payments/{document=**} {
       allow read, write: if true;
     }
+    match /failed_parse_logs/{document=**} {
+      allow read, write: if true;
+    }
+    match /admin_sms_logs/{document=**} {
+      allow read, write: if true;
+    }
   }
 }
