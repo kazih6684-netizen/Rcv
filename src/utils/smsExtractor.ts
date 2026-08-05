@@ -114,11 +114,14 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     // Nagad Format 2: Cash In Received. Amount: Tk 500. Uddokta: 017... TxnID: ...
     
     // Use highly specific Nagad Regex first
-    const nagadAmountMatch = text.match(/(?:Amount:?\s*Tk\s*|received\s*Tk\s*|Tk\s*)([\d,.]+)/i);
+    const nagadAmountMatch = text.match(/(?:Amount:?\s*Tk\s*|received:?\s*Tk\s*|Tk\s*|Amount:?\s*)([\d,.]+)/i);
     const nagadSenderMatch = text.match(/(?:Sender:?\s*|from:?\s*|Uddokta:?\s*|Agent:?\s*)(\d{11,14})/i);
     const nagadTrxMatch = text.match(/(?:TxnID:?\s*|TrxID:?\s*|ID:?\s*)([A-Z0-9]+)/i);
 
-    amount = nagadAmountMatch ? parseFloat(nagadAmountMatch[1].replace(/,/g, '')) : extractAmount(text);
+    let extractedAmountStr = nagadAmountMatch ? nagadAmountMatch[1].replace(/,/g, '') : '';
+    if (extractedAmountStr.endsWith('.')) extractedAmountStr = extractedAmountStr.slice(0, -1);
+    
+    amount = extractedAmountStr ? parseFloat(extractedAmountStr) : extractAmount(text);
     transactionId = nagadTrxMatch ? nagadTrxMatch[1].toUpperCase() : extractTrx(text);
     senderNumber = nagadSenderMatch ? normalizePhoneNumber(nagadSenderMatch[1]) : extractPhone(text);
     balance = extractBalance(text);
