@@ -28,13 +28,28 @@ export function detectProvider(text: string, senderShortcode?: string): PaymentM
 }
 
 export function normalizePhoneNumber(rawNumber: string): string {
-  const cleanDigits = rawNumber.replace(/\D/g, ""); 
-  // If it's a 12-digit Rocket number, the first 11 are the mobile number
-  if (cleanDigits.length === 12) {
+  if (!rawNumber) return '';
+  let cleanDigits = rawNumber.replace(/\D/g, ""); 
+  
+  // Handle country code
+  if (cleanDigits.startsWith('880')) {
+    cleanDigits = cleanDigits.slice(2);
+  } else if (cleanDigits.startsWith('80')) {
+     // Some weird cases
+     cleanDigits = '0' + cleanDigits.slice(2);
+  }
+  
+  // If it's a 12-digit Rocket number, the first 11 are usually the mobile number
+  if (cleanDigits.length === 12 && cleanDigits.startsWith('01')) {
     return cleanDigits.slice(0, 11);
   }
-  // For others (including 11-digit or 13/14-digit with country code), take the last 11
-  return cleanDigits.slice(-11);
+  
+  // For standard 11 digit numbers or longer ones with prefixes
+  if (cleanDigits.length >= 11) {
+    return cleanDigits.slice(-11);
+  }
+  
+  return cleanDigits;
 }
 
 /**
@@ -110,20 +125,36 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // Specific Logic for Nagad (Requested Improvement)
   if (paymentMethod === 'Nagad') {
-    // Nagad Format 1: Money Received. Amount: Tk 500. Sender: 017... TxnID: ...
-    // Nagad Format 2: Cash In Received. Amount: Tk 500. Uddokta: 017... TxnID: ...
+    // Nagad Format 1: Money Received. Amount: Tk 20.00 Sender: 019... TxnID: ...
+    // Nagad Format 2: Cash In Received. Amount: Tk 160.00 Uddokta: 019... TxnID: ...
     
-    // Use highly specific Nagad Regex first
-    const nagadAmountMatch = text.match(/(?:Amount:?\s*Tk\s*|received:?\s*Tk\s*|Tk\s*|Amount:?\s*)([\d,.]+)/i);
-    const nagadSenderMatch = text.match(/(?:Sender:?\s*|from:?\s*|Uddokta:?\s*|Agent:?\s*)(\d{11,14})/i);
-    const nagadTrxMatch = text.match(/(?:TxnID:?\s*|TrxID:?\s*|ID:?\s*)([A-Z0-9]+)/i);
+    // Improved Nagad Specific Extractions
+    const amountMatch = text.match(/(?:Amount|received)\s*[:.-]?\s*Tk\s*([0-9,]+(?:\.[0-9]{1,2})?)/i) ||
+                        text.match(/(?:Amount|received)\s*[:.-]?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i);
+    
+    const senderMatch = text.match(/(?:Sender|Uddokta|from|Agent|From)\s*[:.-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{0,4})/i) ||
+                        text.match(/(?:Sender|Uddokta|from|Agent|From)\s*[:.-]?\s*(\d{11,12})/i);
+    
+    const trxMatch = text.match(/(?:TxnID|TrxID|ID|Trx)\s*[:.-]?\s*([A-Z0-9]{6,16})/i);
 
-    let extractedAmountStr = nagadAmountMatch ? nagadAmountMatch[1].replace(/,/g, '') : '';
-    if (extractedAmountStr.endsWith('.')) extractedAmountStr = extractedAmountStr.slice(0, -1);
-    
-    amount = extractedAmountStr ? parseFloat(extractedAmountStr) : extractAmount(text);
-    transactionId = nagadTrxMatch ? nagadTrxMatch[1].toUpperCase() : extractTrx(text);
-    senderNumber = nagadSenderMatch ? normalizePhoneNumber(nagadSenderMatch[1]) : extractPhone(text);
+    if (amountMatch) {
+      amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    } else {
+      amount = extractAmount(text);
+    }
+
+    if (trxMatch) {
+      transactionId = trxMatch[1].toUpperCase();
+    } else {
+      transactionId = extractTrx(text);
+    }
+
+    if (senderMatch) {
+      senderNumber = normalizePhoneNumber(senderMatch[1]);
+    } else {
+      senderNumber = extractPhone(text);
+    }
+
     balance = extractBalance(text);
   } else {
     // Default/Generic parsing for others
@@ -134,8 +165,11 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   }
 
   // 4. Extract Date/Time
+  // Improved date regex to handle Nagad's trailing date without labels
   const dateRegex = /(?:at|Date:?)\s*([0-9]{1,2}[\/-][A-Z0-9]{2,4}[\/-][0-9]{2,4}(?:\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:am|pm|AM|PM)?)?)/i;
-  const dateMatch = text.match(dateRegex);
+  const nagadTrailingDateRegex = /([0-9]{1,2}[\/-][0-9]{1,2}[\/-][0-9]{2,4}\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:am|pm|AM|PM)?)$/i;
+  
+  const dateMatch = text.match(dateRegex) || text.match(nagadTrailingDateRegex);
   const now = new Date();
   const formattedNow = `${now.toLocaleDateString('en-GB')} ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
   dateTime = dateMatch && dateMatch[1] ? dateMatch[1] : formattedNow;
@@ -250,7 +284,12 @@ export const SAMPLE_SMS_TEMPLATES = [
   },
   {
     provider: 'Nagad' as PaymentMethod,
-    label: 'Nagad Broken SMS (Needs Review)',
-    sms: 'Nagad: You have some incoming balance of Tk 300. Check your wallet for ID 556677.',
+    label: 'Nagad Money Received (New Pattern)',
+    sms: 'Money Received. Amount: Tk 20.00 Sender: 01919012426 Ref: 5 TxnID: 75RYJ6SU Balance: Tk 3494.51 05/08/2026 15:54',
+  },
+  {
+    provider: 'Nagad' as PaymentMethod,
+    label: 'Nagad Cash In (New Pattern)',
+    sms: 'Cash In Received. Amount: Tk 160.00 Uddokta: 01940803280 TxnID: 75R26F8F Balance: 26509.33 31/07/2026 12:21',
   },
 ];
