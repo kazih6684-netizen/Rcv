@@ -27,6 +27,16 @@ export function detectProvider(text: string, senderShortcode?: string): PaymentM
   return null;
 }
 
+export function normalizePhoneNumber(rawNumber: string): string {
+  const cleanDigits = rawNumber.replace(/\D/g, ""); 
+  // If it's a 12-digit Rocket number, the first 11 are the mobile number
+  if (cleanDigits.length === 12) {
+    return cleanDigits.slice(0, 11);
+  }
+  // For others (including 11-digit or 13/14-digit with country code), take the last 11
+  return cleanDigits.slice(-11);
+}
+
 /**
  * Automatically extracts payment details from raw Bangladeshi MFS SMS text
  * Supported providers: bKash, Nagad, Rocket, Upay
@@ -93,25 +103,25 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   };
 
   const extractPhone = (input: string) => {
-    const match = input.match(/(?:from|Sender|number|A\/C|Uddokta|Agent|Customer|From)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i) ||
-                  input.match(/(?:\+?88)?(01[3-9][0-9]{8})\b/);
-    return match ? match[1].trim() : '';
+    const match = input.match(/(?:from|Sender|number|A\/C|Uddokta|Agent|Customer|From)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{0,4})/i) ||
+                  input.match(/(?:\+?88)?(01[3-9][0-9]{8,11})\b/);
+    return match ? normalizePhoneNumber(match[1]) : '';
   };
 
   // Specific Logic for Nagad (Requested Improvement)
   if (paymentMethod === 'Nagad') {
     // Nagad Format 1: Money Received. Amount: Tk 500. Sender: 017... TxnID: ...
     // Nagad Format 2: Cash In Received. Amount: Tk 500. Uddokta: 017... TxnID: ...
-    amount = extractAmount(text);
-    balance = extractBalance(text);
-    transactionId = extractTrx(text);
-    senderNumber = extractPhone(text);
     
-    // Improved Nagad phone extraction specifically for "Sender:" and "Uddokta:"
-    if (!senderNumber) {
-      const nagadPhoneMatch = text.match(/(?:Sender|Uddokta)\s*[:.-]?\s*(?:\+?88)?(01[3-9][0-9]{8})/i);
-      if (nagadPhoneMatch) senderNumber = nagadPhoneMatch[1];
-    }
+    // Use highly specific Nagad Regex first
+    const nagadAmountMatch = text.match(/(?:Amount:?\s*Tk\s*|received\s*Tk\s*|Tk\s*)([\d,.]+)/i);
+    const nagadSenderMatch = text.match(/(?:Sender:?\s*|from:?\s*|Uddokta:?\s*|Agent:?\s*)(\d{11,14})/i);
+    const nagadTrxMatch = text.match(/(?:TxnID:?\s*|TrxID:?\s*|ID:?\s*)([A-Z0-9]+)/i);
+
+    amount = nagadAmountMatch ? parseFloat(nagadAmountMatch[1].replace(/,/g, '')) : extractAmount(text);
+    transactionId = nagadTrxMatch ? nagadTrxMatch[1].toUpperCase() : extractTrx(text);
+    senderNumber = nagadSenderMatch ? normalizePhoneNumber(nagadSenderMatch[1]) : extractPhone(text);
+    balance = extractBalance(text);
   } else {
     // Default/Generic parsing for others
     amount = extractAmount(text);
@@ -134,7 +144,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // Clean up results
   if (!senderNumber) senderNumber = "Unknown";
-  if (senderNumber.length > 11 && senderNumber.startsWith('01')) senderNumber = senderNumber.substring(0, 11);
+  else senderNumber = normalizePhoneNumber(senderNumber);
 
   const last3DigitsTrx = transactionId.slice(-3);
   const last3DigitsSender = senderNumber.length >= 3 ? senderNumber.slice(-3) : senderNumber;

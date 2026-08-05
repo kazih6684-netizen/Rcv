@@ -22,7 +22,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { PaymentRecord, PaymentStats, PaymentMethod, AdminSmsLog } from '../types';
-import { getProviderBrandColor, parsePaymentSMS, detectProvider } from '../utils/smsExtractor';
+import { getProviderBrandColor, parsePaymentSMS, detectProvider, normalizePhoneNumber } from '../utils/smsExtractor';
 import { db, collection, query, orderBy, onSnapshot } from '../firebase';
 
 interface AdminDashboardProps {
@@ -86,12 +86,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchesProvider =
       selectedProvider === 'all' || p.paymentMethod === selectedProvider;
     const q = searchQuery.toLowerCase().trim();
+    const normalizedQ = normalizePhoneNumber(q);
+    const normalizedSender = normalizePhoneNumber(p.senderNumber);
+    
     const matchesQuery =
       !q ||
       p.last3DigitsTrx.toLowerCase().includes(q) ||
       p.last3DigitsSender.toLowerCase().includes(q) ||
       p.transactionId.toLowerCase().includes(q) ||
       p.senderNumber.toLowerCase().includes(q) ||
+      normalizedSender.includes(q) ||
+      (normalizedQ.length >= 11 && normalizedSender === normalizedQ) ||
       p.amount.toString().includes(q);
     return matchesProvider && matchesQuery;
   });

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { parsePaymentSMS, isOTPSMS, detectProvider } from './src/utils/smsExtractor.js';
+import { parsePaymentSMS, isOTPSMS, detectProvider, normalizePhoneNumber } from './src/utils/smsExtractor.js';
 import { PaymentRecord, PaymentStats, AdminSmsLog } from './src/types.js';
 
 import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp, updateDoc } from './src/firebase.js';
@@ -46,12 +46,24 @@ app.post('/api/payments/search', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Digits string is required' });
   }
   const queryStr = digits.trim().toLowerCase();
-  console.log(`PAYMENT SEARCH: Query digits [${queryStr}]`);
+  const normalizedQuery = normalizePhoneNumber(queryStr);
+  console.log(`PAYMENT SEARCH: Query [${queryStr}] -> Normalized [${normalizedQuery}]`);
   
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
-    const trxMatch = pay.last3DigitsTrx.toLowerCase() === queryStr || pay.transactionId.toLowerCase().endsWith(queryStr) || pay.transactionId.toLowerCase().includes(queryStr);
-    const senderMatch = pay.last3DigitsSender.toLowerCase() === queryStr || pay.senderNumber.toLowerCase().endsWith(queryStr) || pay.senderNumber.toLowerCase().includes(queryStr);
+    // 1. Transaction ID Match (Last 3 digits or full)
+    const trxMatch = 
+      pay.last3DigitsTrx.toLowerCase() === queryStr || 
+      pay.transactionId.toLowerCase().endsWith(queryStr) || 
+      pay.transactionId.toLowerCase().includes(queryStr);
+    
+    // 2. Sender Phone Match (Normalized query vs normalized sender)
+    const normalizedSender = normalizePhoneNumber(pay.senderNumber);
+    const senderMatch = 
+      pay.last3DigitsSender.toLowerCase() === queryStr || 
+      normalizedSender.endsWith(queryStr) || 
+      normalizedSender.includes(queryStr) ||
+      (normalizedQuery.length >= 11 && normalizedSender === normalizedQuery);
     
     if (trxMatch || senderMatch) {
       console.log(` -> MATCH FOUND: TrxID=${pay.transactionId}, Sender=${pay.senderNumber}, Amount=${pay.amount}`);
@@ -195,7 +207,7 @@ app.post('/api/admin/sms-logs/:id/confirm', async (req, res) => {
 
   try {
     // 1. Create the payment record
-    const cleanSender = String(senderNumber).trim();
+    const cleanSender = normalizePhoneNumber(String(senderNumber).trim());
     const cleanTrx = String(trxId).trim().toUpperCase();
     
     const newPaymentData = {
@@ -231,7 +243,7 @@ app.post('/api/payments', async (req, res) => {
   if (!amount || !paymentMethod || !senderNumber || !transactionId) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
-  const cleanSender = String(senderNumber).trim();
+  const cleanSender = normalizePhoneNumber(String(senderNumber).trim());
   const cleanTrx = String(transactionId).trim().toUpperCase();
   
   const newPaymentData = {
