@@ -106,30 +106,29 @@ app.post('/api/sms/parse', async (req, res) => {
   console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}]`);
   console.log(`PAYMENT DETECTOR: Content: "${smsText}"`);
   
-  const provider = detectProvider(smsText, typeof sender === 'string' ? sender : undefined);
+  const senderStr = sender ? String(sender) : undefined;
+  const provider = detectProvider(smsText, senderStr);
 
   try {
-    const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
+    const parseResult = parsePaymentSMS(smsText, senderStr);
     
-    // Log to admin_sms_logs if it's Nagad or if any provider is detected (Requirement 3)
-    // The user specifically mentioned Nagad but also said "every non OTP Nagad payment SMS"
-    // I will log all Nagad and possibly others to be safe, but focusing on Nagad as requested.
-    if (provider === 'Nagad' || provider) {
-      const logData: Omit<AdminSmsLog, 'id'> = {
-        rawText: smsText,
-        sender: String(sender || 'Unknown'),
-        receivedAt: new Date().toISOString(),
-        timestamp: serverTimestamp(),
-        status: parseResult.success ? 'Confirmed' : 'Needs Review',
-        parserStatus: parseResult.success ? 'Success' : 'Failed',
-        extractedAmount: parseResult.amount,
-        extractedTrxId: parseResult.transactionId,
-        extractedSender: parseResult.senderNumber,
-        provider: provider || undefined
-      };
-      await addDoc(collection(db, 'admin_sms_logs'), logData);
-      console.log(`PAYMENT DETECTOR: Logged to admin_sms_logs (Provider: ${provider})`);
-    }
+    // Log ALL incoming SMS that are not OTP to admin_sms_logs (Requirement 3)
+    // This helps debug why some messages might not be parsing correctly
+    const logData: Omit<AdminSmsLog, 'id'> = {
+      rawText: smsText,
+      sender: String(sender || 'Unknown'),
+      receivedAt: new Date().toISOString(),
+      timestamp: serverTimestamp(),
+      status: parseResult.success ? 'Confirmed' : 'Needs Review',
+      parserStatus: parseResult.success ? 'Success' : 'Failed',
+      extractedAmount: parseResult.amount || 0,
+      extractedTrxId: parseResult.transactionId || '',
+      extractedSender: parseResult.senderNumber || '',
+      provider: provider || undefined
+    };
+    
+    await addDoc(collection(db, 'admin_sms_logs'), logData);
+    console.log(`PAYMENT DETECTOR: Logged to admin_sms_logs (Provider: ${provider || 'Unknown'})`);
 
     if (!parseResult.success) {
       console.log(`PAYMENT DETECTOR FAIL: ${parseResult.error}`);

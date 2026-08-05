@@ -14,15 +14,17 @@ export function detectProvider(text: string, senderShortcode?: string): PaymentM
   const lowerText = text.toLowerCase();
   const lowerSender = (senderShortcode || '').toLowerCase();
 
+  // Primary: Sender Header
   if (lowerSender.includes('bkash')) return 'bKash';
-  if (lowerSender.includes('nagad') || lowerSender === '16167') return 'Nagad';
-  if (lowerSender.includes('rocket') || lowerSender === '16216' || lowerSender.includes('nexuspay')) return 'Rocket';
-  if (lowerSender.includes('upay') || lowerSender === '16268') return 'Upay';
+  if (lowerSender.includes('nagad') || lowerSender.includes('16167') || lowerSender.includes('1616')) return 'Nagad';
+  if (lowerSender.includes('rocket') || lowerSender.includes('16216') || lowerSender.includes('nexuspay')) return 'Rocket';
+  if (lowerSender.includes('upay') || lowerSender.includes('16268')) return 'Upay';
 
+  // Secondary: Content Keywords
   if (lowerText.includes('bkash')) return 'bKash';
-  if (lowerText.includes('nagad') || lowerText.includes('uddokta')) return 'Nagad';
-  if (lowerText.includes('rocket') || lowerText.includes('nexuspay')) return 'Rocket';
-  if (lowerText.includes('upay')) return 'Upay';
+  if (lowerText.includes('nagad') || lowerText.includes('uddokta') || lowerText.includes('16167') || lowerText.includes('1616')) return 'Nagad';
+  if (lowerText.includes('rocket') || lowerText.includes('nexuspay') || lowerText.includes('16216')) return 'Rocket';
+  if (lowerText.includes('upay') || lowerText.includes('16268')) return 'Upay';
 
   return null;
 }
@@ -65,20 +67,8 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   const lowerText = text.toLowerCase();
   const lowerSender = (senderShortcode || '').toLowerCase();
 
-  // 1. Detect Provider (Highest Priority: Sender ID)
-  let paymentMethod: PaymentMethod | null = null;
-  if (lowerSender.includes('bkash')) paymentMethod = 'bKash';
-  else if (lowerSender.includes('nagad') || lowerSender === '16167') paymentMethod = 'Nagad';
-  else if (lowerSender.includes('rocket') || lowerSender === '16216' || lowerSender.includes('nexuspay')) paymentMethod = 'Rocket';
-  else if (lowerSender.includes('upay') || lowerSender === '16268') paymentMethod = 'Upay';
-
-  // Fallback Detection (By Keywords)
-  if (!paymentMethod) {
-    if (lowerText.includes('bkash')) paymentMethod = 'bKash';
-    else if (lowerText.includes('nagad') || lowerText.includes('uddokta')) paymentMethod = 'Nagad';
-    else if (lowerText.includes('rocket') || lowerText.includes('nexuspay')) paymentMethod = 'Rocket';
-    else if (lowerText.includes('upay')) paymentMethod = 'Upay';
-  }
+  // 1. Detect Provider
+  let paymentMethod = detectProvider(text, senderShortcode);
 
   // 2. Validate if it's a payment message
   const isPaymentReceived = 
