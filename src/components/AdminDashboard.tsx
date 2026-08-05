@@ -16,13 +16,9 @@ import {
   CreditCard,
   CheckCircle2,
   AlertTriangle,
-  Inbox,
-  Mail,
-  History,
-  Eye,
 } from 'lucide-react';
-import { PaymentRecord, PaymentStats, PaymentMethod, AdminSmsLog } from '../types';
-import { getProviderBrandColor, parsePaymentSMS, detectProvider, normalizePhoneNumber } from '../utils/smsExtractor';
+import { PaymentRecord, PaymentStats, PaymentMethod } from '../types';
+import { getProviderBrandColor, parsePaymentSMS } from '../utils/smsExtractor';
 import { db, collection, query, orderBy, onSnapshot } from '../firebase';
 
 interface AdminDashboardProps {
@@ -58,20 +54,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs' | 'inbox'>('payments');
+  const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs'>('payments');
   const [failedLogs, setFailedLogs] = useState<any[]>([]);
-  const [smsLogs, setSmsLogs] = useState<AdminSmsLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [testSmsText, setTestSmsText] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
-
-  const [selectedLog, setSelectedLog] = useState<AdminSmsLog | null>(null);
-  const [isConfirmingLog, setIsConfirmingLog] = useState(false);
-  const [manualAmount, setManualAmount] = useState('');
-  const [manualTrx, setManualTrx] = useState('');
-  const [manualSender, setManualSender] = useState('');
-
-  const [inboxSearch, setInboxSearch] = useState('');
 
 
   // Form states for manual entry
@@ -86,17 +73,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchesProvider =
       selectedProvider === 'all' || p.paymentMethod === selectedProvider;
     const q = searchQuery.toLowerCase().trim();
-    const normalizedQ = normalizePhoneNumber(q);
-    const normalizedSender = normalizePhoneNumber(p.senderNumber);
-    
     const matchesQuery =
       !q ||
       p.last3DigitsTrx.toLowerCase().includes(q) ||
       p.last3DigitsSender.toLowerCase().includes(q) ||
       p.transactionId.toLowerCase().includes(q) ||
       p.senderNumber.toLowerCase().includes(q) ||
-      normalizedSender.includes(q) ||
-      (normalizedQ.length >= 11 && normalizedSender === normalizedQ) ||
       p.amount.toString().includes(q);
     return matchesProvider && matchesQuery;
   });
@@ -122,16 +104,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setFailedLogs(logs);
-        setIsLoadingLogs(false);
-      });
-      return () => unsubscribe();
-    }
-    if (activeTab === 'inbox') {
-      setIsLoadingLogs(true);
-      const q = query(collection(db, 'admin_sms_logs'), orderBy('timestamp', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminSmsLog));
-        setSmsLogs(logs);
         setIsLoadingLogs(false);
       });
       return () => unsubscribe();
@@ -163,43 +135,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!testSmsText.trim()) return;
     const result = parsePaymentSMS(testSmsText);
     setTestResult(result);
-  };
-
-  const handleReviewLog = (log: AdminSmsLog) => {
-    setSelectedLog(log);
-    setManualAmount(log.extractedAmount?.toString() || '');
-    setManualTrx(log.extractedTrxId || '');
-    setManualSender(log.extractedSender || log.sender || '');
-  };
-
-  const handleConfirmSmsLog = async () => {
-    if (!selectedLog || !manualAmount || !manualTrx || !manualSender) return;
-    
-    setIsConfirmingLog(true);
-    try {
-      const response = await fetch(`/api/admin/sms-logs/${selectedLog.id}/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: manualAmount,
-          trxId: manualTrx,
-          senderNumber: manualSender,
-          provider: selectedLog.provider || detectProvider(selectedLog.rawText) || 'Nagad'
-        }),
-      });
-      
-      const result = await response.json();
-      if (result.success) {
-        setSelectedLog(null);
-        onRefresh();
-      } else {
-        alert(result.message || "Failed to confirm payment");
-      }
-    } catch (err) {
-      alert("Error confirming payment");
-    } finally {
-      setIsConfirmingLog(false);
-    }
   };
 
   const exportCSV = () => {
@@ -410,15 +345,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               activeTab === 'logs' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Failed Parse Logs
-          </button>
-          <button
-            onClick={() => setActiveTab('inbox')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
-              activeTab === 'inbox' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Nagad SMS Inbox
+            Failed SMS Logs
           </button>
         </div>
       </div>
@@ -638,202 +565,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {activeTab === 'inbox' && (
-        <div className="space-y-6">
-          {/* Inbox Counters */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block">New SMS (Total)</span>
-                <span className="text-2xl font-black text-indigo-900">{smsLogs.length}</span>
-              </div>
-              <Mail className="w-8 h-8 text-indigo-200" />
-            </div>
-            <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest block">Pending Review</span>
-                <span className="text-2xl font-black text-amber-900">
-                  {smsLogs.filter(l => l.status === 'Needs Review').length}
-                </span>
-              </div>
-              <AlertTriangle className="w-8 h-8 text-amber-200" />
-            </div>
-            <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Confirmed Recently</span>
-                <span className="text-2xl font-black text-emerald-900">
-                  {smsLogs.filter(l => l.status === 'Confirmed').length}
-                </span>
-              </div>
-              <CheckCircle2 className="w-8 h-8 text-emerald-200" />
-            </div>
-          </div>
-
-          {/* Search & List */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Inbox className="w-4 h-4 text-indigo-600" />
-                <span>Nagad SMS Logs</span>
-              </h3>
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Search by text, phone, or Trx ID..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                  value={inboxSearch}
-                  onChange={(e) => setInboxSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="p-3">Received At</th>
-                    <th className="p-3">Sender</th>
-                    <th className="p-3">SMS Content</th>
-                    <th className="p-3">Parsed Info</th>
-                    <th className="p-3 text-center">Status</th>
-                    <th className="p-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {smsLogs.filter(log => {
-                    const q = inboxSearch.toLowerCase();
-                    return !q || 
-                      log.rawText.toLowerCase().includes(q) || 
-                      log.sender.toLowerCase().includes(q) || 
-                      log.extractedTrxId?.toLowerCase().includes(q) || 
-                      log.extractedSender?.toLowerCase().includes(q) ||
-                      log.extractedAmount?.toString().includes(q);
-                  }).map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50/80 transition">
-                      <td className="p-3 whitespace-nowrap">
-                        <div className="text-slate-900 font-semibold">{new Date(log.receivedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                        <div className="text-[10px] text-slate-500">{new Date(log.receivedAt).toLocaleDateString()}</div>
-                      </td>
-                      <td className="p-3 font-mono font-bold text-slate-700">{log.sender}</td>
-                      <td className="p-3 max-w-xs sm:max-w-md">
-                        <p className="text-slate-600 line-clamp-2 italic leading-relaxed">"{log.rawText}"</p>
-                      </td>
-                      <td className="p-3">
-                        {log.extractedAmount ? (
-                          <div className="space-y-1">
-                            <div className="text-emerald-700 font-bold">৳{log.extractedAmount}</div>
-                            <div className="text-[10px] font-mono text-slate-500">{log.extractedTrxId}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Not parsed</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                          log.status === 'Confirmed' ? 'bg-emerald-100 text-emerald-700' : 
-                          log.status === 'Needs Review' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'
-                        }`}>
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        {log.status === 'Needs Review' ? (
-                          <button 
-                            onClick={() => handleReviewLog(log)}
-                            className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition flex items-center gap-1 ml-auto"
-                          >
-                            <Eye className="w-3 h-3" />
-                            Review
-                          </button>
-                        ) : (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto" />
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* REVIEW MODAL */}
-      {selectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-6 relative shadow-2xl overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-indigo-600" />
-            <button
-              onClick={() => setSelectedLog(null)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 p-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-                <span>Manual SMS Review</span>
-              </h3>
-              <p className="text-xs text-slate-500">Examine the raw SMS and confirm the payment details manually.</p>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Raw SMS Content</div>
-              <p className="text-sm font-medium text-slate-700 italic leading-relaxed">"{selectedLog.rawText}"</p>
-              <div className="mt-3 text-[10px] font-bold text-indigo-600">Sender: {selectedLog.sender}</div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount (Tk)</label>
-                <input 
-                  type="number"
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  value={manualAmount}
-                  onChange={(e) => setManualAmount(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Transaction ID</label>
-                <input 
-                  type="text"
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold uppercase focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  value={manualTrx}
-                  onChange={(e) => setManualTrx(e.target.value)}
-                />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sender Mobile</label>
-                <input 
-                  type="text"
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  value={manualSender}
-                  onChange={(e) => setManualSender(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="flex-1 py-3 text-slate-700 bg-slate-100 hover:bg-slate-200 font-bold rounded-xl text-sm transition"
-              >
-                Discard
-              </button>
-              <button
-                onClick={handleConfirmSmsLog}
-                disabled={isConfirmingLog}
-                className="flex-2 py-3 px-8 text-white bg-indigo-600 hover:bg-indigo-700 font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
-              >
-                {isConfirmingLog ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                Confirm Payment
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* DELETE CONFIRMATION MODAL */}
       {isDeletingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-xs w-full p-5 space-y-4 text-center">

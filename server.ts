@@ -1,10 +1,10 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { parsePaymentSMS, isOTPSMS, detectProvider, normalizePhoneNumber } from './src/utils/smsExtractor.js';
-import { PaymentRecord, PaymentStats, AdminSmsLog } from './src/types.js';
+import { parsePaymentSMS } from './src/utils/smsExtractor.js';
+import { PaymentRecord, PaymentStats } from './src/types.js';
 
-import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp, updateDoc } from './src/firebase.js';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp } from './src/firebase.js';
 
 const app = express();
 const PORT = 3000;
@@ -46,36 +46,18 @@ app.post('/api/payments/search', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Digits string is required' });
   }
   const queryStr = digits.trim().toLowerCase();
-  const normalizedQuery = normalizePhoneNumber(queryStr);
-  console.log(`PAYMENT SEARCH: Query [${queryStr}] -> Normalized [${normalizedQuery}]`);
   
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
-    // 1. Transaction ID Match (Last 3 digits or full)
-    const trxMatch = 
-      pay.last3DigitsTrx.toLowerCase() === queryStr || 
-      pay.transactionId.toLowerCase().endsWith(queryStr) || 
-      pay.transactionId.toLowerCase().includes(queryStr);
-    
-    // 2. Sender Phone Match (Normalized query vs normalized sender)
-    const normalizedSender = normalizePhoneNumber(pay.senderNumber);
-    const senderMatch = 
-      pay.last3DigitsSender.toLowerCase() === queryStr || 
-      normalizedSender.endsWith(queryStr) || 
-      normalizedSender.includes(queryStr) ||
-      (normalizedQuery.length >= 11 && normalizedSender === normalizedQuery);
-    
-    if (trxMatch || senderMatch) {
-      console.log(` -> MATCH FOUND: TrxID=${pay.transactionId}, Sender=${pay.senderNumber}, Amount=${pay.amount}`);
-      return true;
-    }
-    return false;
+    return (
+      pay.last3DigitsTrx.toLowerCase() === queryStr ||
+      pay.last3DigitsSender.toLowerCase() === queryStr ||
+      pay.transactionId.toLowerCase().endsWith(queryStr) ||
+      pay.senderNumber.toLowerCase().endsWith(queryStr) ||
+      pay.transactionId.toLowerCase().includes(queryStr) ||
+      pay.senderNumber.toLowerCase().includes(queryStr)
+    );
   });
-
-  if (matched.length === 0) {
-    console.log(` -> NO MATCH FOUND for query [${queryStr}]`);
-  }
-
   res.json({
     success: true,
     query: queryStr,
@@ -97,39 +79,12 @@ app.post('/api/sms/parse', async (req, res) => {
     return res.status(400).json({ success: false, message: 'SMS text is required' });
   }
 
-  // 1. Check for OTP (Requirement 2)
-  if (isOTPSMS(smsText)) {
-    console.log("PAYMENT DETECTOR: Ignored OTP/Auth SMS");
-    return res.json({ success: false, message: 'OTP/Authentication SMS ignored' });
-  }
-
   console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}]`);
   console.log(`PAYMENT DETECTOR: Content: "${smsText}"`);
   
-  const senderStr = sender ? String(sender) : undefined;
-  const provider = detectProvider(smsText, senderStr);
-
   try {
-    const parseResult = parsePaymentSMS(smsText, senderStr);
+    const parseResult = parsePaymentSMS(smsText, typeof sender === 'string' ? sender : undefined);
     
-    // Log ALL incoming SMS that are not OTP to admin_sms_logs (Requirement 3)
-    // This helps debug why some messages might not be parsing correctly
-    const logData: Omit<AdminSmsLog, 'id'> = {
-      rawText: smsText,
-      sender: String(sender || 'Unknown'),
-      receivedAt: new Date().toISOString(),
-      timestamp: serverTimestamp(),
-      status: parseResult.success ? 'Confirmed' : 'Needs Review',
-      parserStatus: parseResult.success ? 'Success' : 'Failed',
-      extractedAmount: parseResult.amount || 0,
-      extractedTrxId: parseResult.transactionId || '',
-      extractedSender: parseResult.senderNumber || '',
-      provider: provider || undefined
-    };
-    
-    await addDoc(collection(db, 'admin_sms_logs'), logData);
-    console.log(`PAYMENT DETECTOR: Logged to admin_sms_logs (Provider: ${provider || 'Unknown'})`);
-
     if (!parseResult.success) {
       console.log(`PAYMENT DETECTOR FAIL: ${parseResult.error}`);
       // Log failed parse attempts for debugging
@@ -143,11 +98,10 @@ app.post('/api/sms/parse', async (req, res) => {
     }
     
     console.log(`PAYMENT DETECTOR SUCCESS:`);
-    console.log(` -> Provider Detected: ${parseResult.paymentMethod}`);
-    console.log(` -> Amount Extracted: ৳${parseResult.amount}`);
-    console.log(` -> Balance: ৳${parseResult.balance || 0}`);
-    console.log(` -> Transaction ID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
-    console.log(` -> Sender Number: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
+    console.log(` -> Method: ${parseResult.paymentMethod}`);
+    console.log(` -> Amount: ৳${parseResult.amount}`);
+    console.log(` -> TrxID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
+    console.log(` -> Sender Phone: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
 
     const newPaymentData = {
       amount: parseResult.amount,
@@ -156,7 +110,6 @@ app.post('/api/sms/parse', async (req, res) => {
       last3DigitsSender: parseResult.last3DigitsSender,
       senderNumber: parseResult.senderNumber,
       transactionId: parseResult.transactionId,
-      balance: parseResult.balance || 0,
       dateTime: parseResult.dateTime,
       rawSms: parseResult.rawSms,
       status: 'verified',
@@ -179,70 +132,13 @@ app.post('/api/sms/parse', async (req, res) => {
   }
 });
 
-// Admin SMS Logs API
-app.get('/api/admin/sms-logs', async (req, res) => {
-  try {
-    const q = query(collection(db, 'admin_sms_logs'), orderBy('timestamp', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const logs: AdminSmsLog[] = [];
-    querySnapshot.forEach((doc) => {
-      logs.push({ id: doc.id, ...doc.data() } as AdminSmsLog);
-    });
-    res.json({ success: true, logs });
-  } catch (err) {
-    console.error("Error fetching SMS logs", err);
-    res.status(500).json({ success: false, message: 'Failed to fetch SMS logs' });
-  }
-});
-
-// Manually confirm an SMS log
-app.post('/api/admin/sms-logs/:id/confirm', async (req, res) => {
-  const { id } = req.params;
-  const { amount, trxId, senderNumber, provider } = req.body;
-  
-  if (!amount || !trxId || !senderNumber || !provider) {
-    return res.status(400).json({ success: false, message: 'Missing required fields for confirmation' });
-  }
-
-  try {
-    // 1. Create the payment record
-    const cleanSender = normalizePhoneNumber(String(senderNumber).trim());
-    const cleanTrx = String(trxId).trim().toUpperCase();
-    
-    const newPaymentData = {
-      amount: Number(amount) || 0,
-      paymentMethod: provider,
-      last3DigitsTrx: cleanTrx.slice(-3),
-      last3DigitsSender: cleanSender.slice(-3),
-      senderNumber: cleanSender,
-      transactionId: cleanTrx,
-      dateTime: `${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
-      rawSms: `Manually Confirmed from Admin SMS Inbox: Tk ${amount} from ${cleanSender}. TrxID: ${cleanTrx}`,
-      status: 'verified',
-      createdAt: serverTimestamp(),
-    };
-
-    await addDoc(collection(db, 'payments'), newPaymentData);
-    
-    // 2. Update the log status
-    await updateDoc(doc(db, 'admin_sms_logs', id), {
-      status: 'Confirmed'
-    });
-
-    res.json({ success: true, message: 'Payment confirmed manually' });
-  } catch (err) {
-    console.error("Error confirming SMS log", err);
-    res.status(500).json({ success: false, message: 'Failed to confirm payment' });
-  }
-});
-
 // Create payment manually by admin
 app.post('/api/payments', async (req, res) => {
   const { amount, paymentMethod, senderNumber, transactionId } = req.body;
   if (!amount || !paymentMethod || !senderNumber || !transactionId) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
-  const cleanSender = normalizePhoneNumber(String(senderNumber).trim());
+  const cleanSender = String(senderNumber).trim();
   const cleanTrx = String(transactionId).trim().toUpperCase();
   
   const newPaymentData = {

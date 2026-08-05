@@ -8,7 +8,6 @@ export interface PaymentRecord {
   last3DigitsSender: string;
   senderNumber: string;
   transactionId: string;
-  balance?: number;
   dateTime: string;
   rawSms: string;
   status: 'Success' | 'Pending' | 'Failed';
@@ -23,7 +22,6 @@ export interface SMSParseResult {
   last3DigitsSender?: string;
   senderNumber?: string;
   transactionId?: string;
-  balance?: number;
   dateTime?: string;
   rawSms?: string;
   error?: string;
@@ -35,20 +33,6 @@ export interface PaymentStats {
   totalVolume: number;
   todayVolume: number;
   byMethod: Record<PaymentMethod, number>;
-}
-
-export interface AdminSmsLog {
-  id?: string;
-  rawText: string;
-  sender: string;
-  receivedAt: string;
-  timestamp: any; // Firestore serverTimestamp
-  status: 'New' | 'Confirmed' | 'Needs Review';
-  parserStatus: 'Success' | 'Failed';
-  extractedAmount?: number;
-  extractedTrxId?: string;
-  extractedSender?: string;
-  provider?: PaymentMethod;
 }
 
 export interface AppState {
