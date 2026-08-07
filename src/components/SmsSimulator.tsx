@@ -15,7 +15,7 @@ import { SAMPLE_SMS_TEMPLATES } from '../utils/smsExtractor';
 import { PaymentRecord, PaymentMethod } from '../types';
 
 interface SmsSimulatorProps {
-  onParseAndSaveSMS: (rawSms: string) => Promise<PaymentRecord | null>;
+  onParseAndSaveSMS: (rawSms: string, isDemo?: boolean) => Promise<PaymentRecord | null>;
   smsPermissionGranted: boolean;
   onTogglePermission: () => void;
 }
@@ -34,16 +34,18 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
     const text = smsTextToParse || rawSmsInput;
     if (!text.trim()) return;
 
+    const isDemoSms = text.includes('75SD1SNV') || text.includes('75SDCB9M');
+
     setIsProcessing(true);
     try {
-      const record = await onParseAndSaveSMS(text);
+      const record = await onParseAndSaveSMS(text, isDemoSms);
       if (record) {
         setLastExtracted(record);
         setLogs((prev) => [
           {
             id: String(Date.now()),
             time: new Date().toLocaleTimeString(),
-            text: `[${record.paymentMethod}] Extracted ৳${record.amount} (TrxID: ${record.transactionId})`,
+            text: `[${record.paymentMethod}] Extracted ৳${record.amount} (${record.status === 'demo_reference' ? 'Demo Reference - NOT Saved' : `TrxID: ${record.transactionId}`})`,
             success: true,
           },
           ...prev.slice(0, 15),
@@ -189,9 +191,11 @@ export const SmsSimulator: React.FC<SmsSimulatorProps> = ({
 
           {lastExtracted ? (
             <div className="space-y-2 text-xs">
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex justify-between items-center">
-                <span className="font-semibold text-emerald-800">Status</span>
-                <span className="font-black text-emerald-700 uppercase">✓ Saved to Database</span>
+              <div className={`p-3 rounded-xl border flex justify-between items-center ${lastExtracted.status === 'demo_reference' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <span className={`font-semibold ${lastExtracted.status === 'demo_reference' ? 'text-amber-800' : 'text-emerald-800'}`}>Status</span>
+                <span className={`font-black uppercase text-[11px] ${lastExtracted.status === 'demo_reference' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {lastExtracted.status === 'demo_reference' ? 'ℹ️ Demo Reference Only (Not Saved to DB)' : '✓ Saved to Database'}
+                </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Method:</span>

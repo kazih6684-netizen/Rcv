@@ -46,21 +46,22 @@ app.post('/api/payments/search', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Digits string is required' });
   }
   const queryStr = digits.trim().toLowerCase();
+  const searchLast3 = queryStr.slice(-3); // Extract last 3 digits as verification key
   
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
-    return (
-      pay.last3DigitsTrx.toLowerCase() === queryStr ||
-      pay.last3DigitsSender.toLowerCase() === queryStr ||
-      pay.transactionId.toLowerCase().endsWith(queryStr) ||
-      pay.senderNumber.toLowerCase().endsWith(queryStr) ||
-      pay.transactionId.toLowerCase().includes(queryStr) ||
-      pay.senderNumber.toLowerCase().includes(queryStr)
-    );
+    // Last 3 Digits Verification Key Rule:
+    // Only accept/approve payment if the last 3 digits match either sender phone number or transaction ID
+    const senderLast3 = (pay.last3DigitsSender || pay.senderNumber.slice(-3)).toLowerCase();
+    const trxLast3 = (pay.last3DigitsTrx || pay.transactionId.slice(-3)).toLowerCase();
+    
+    return senderLast3 === queryStr || trxLast3 === queryStr || senderLast3 === searchLast3 || trxLast3 === searchLast3;
   });
+
   res.json({
     success: true,
     query: queryStr,
+    searchLast3,
     count: matched.length,
     matchedPayments: matched,
   });
@@ -73,13 +74,20 @@ app.post('/api/sms/parse', async (req, res) => {
   
   const smsText = req.body.smsText || req.body.sms_message || req.body.body || req.body.message || req.body.text;
   const sender = req.body.sender || req.body.from || req.body.number || req.body.address || req.body.sms_number;
-  
+  const isExplicitDemo = Boolean(req.body.isDemo);
+
   if (!smsText || typeof smsText !== 'string') {
     console.log("PAYMENT DETECTOR ERROR: SMS text not found");
     return res.status(400).json({ success: false, message: 'SMS text is required' });
   }
 
-  console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}]`);
+  // Check if this is a Nagad Demo SMS sample (Rule: Demo SMS are reference only and must NEVER be saved to DB)
+  const isNagadDemoSms = 
+    isExplicitDemo || 
+    smsText.includes('75SD1SNV') || 
+    smsText.includes('75SDCB9M');
+
+  console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}] (IsDemo: ${isNagadDemoSms})`);
   console.log(`PAYMENT DETECTOR: Content: "${smsText}"`);
   
   try {
@@ -87,7 +95,6 @@ app.post('/api/sms/parse', async (req, res) => {
     
     if (!parseResult.success) {
       console.log(`PAYMENT DETECTOR FAIL: ${parseResult.error}`);
-      // Log failed parse attempts for debugging
       await addDoc(collection(db, 'failed_parse_logs'), {
         smsText,
         sender: sender || 'Unknown',
@@ -103,7 +110,7 @@ app.post('/api/sms/parse', async (req, res) => {
     console.log(` -> TrxID: ${parseResult.transactionId} (Last 3: ${parseResult.last3DigitsTrx})`);
     console.log(` -> Sender Phone: ${parseResult.senderNumber} (Last 3: ${parseResult.last3DigitsSender})`);
 
-    const newPaymentData = {
+    const paymentPayload = {
       amount: parseResult.amount,
       paymentMethod: parseResult.paymentMethod,
       last3DigitsTrx: parseResult.last3DigitsTrx,
@@ -113,17 +120,34 @@ app.post('/api/sms/parse', async (req, res) => {
       dateTime: parseResult.dateTime,
       rawSms: parseResult.rawSms,
       status: 'verified',
-      createdAt: serverTimestamp(),
     };
 
-    const docRef = await addDoc(collection(db, 'payments'), newPaymentData);
-    console.log(`PAYMENT DETECTOR: Saved to Firestore with ID: ${docRef.id}`);
+    if (isNagadDemoSms) {
+      console.log("PAYMENT DETECTOR: DEMO SMS DETECTED - Reference format only. NOT saved to database.");
+      return res.json({
+        success: true,
+        isDemo: true,
+        message: 'Nagad demo SMS reference format parsed successfully (Not saved to database as per rule)',
+        payment: {
+          id: 'DEMO_REFERENCE_NOT_SAVED',
+          ...paymentPayload,
+          status: 'demo_reference',
+        },
+      });
+    }
+
+    const docRef = await addDoc(collection(db, 'payments'), {
+      ...paymentPayload,
+      createdAt: serverTimestamp(),
+    });
+
+    console.log(`PAYMENT DETECTOR: Real SMS saved to Firestore with ID: ${docRef.id}`);
     console.log("-----------------------------------------");
     
-    const newPayment = { id: docRef.id, ...newPaymentData };
+    const newPayment = { id: docRef.id, ...paymentPayload };
     res.json({
       success: true,
-      message: 'Payment parsed and saved successfully',
+      message: 'Real payment parsed and saved to database successfully',
       payment: newPayment,
     });
   } catch (err) {

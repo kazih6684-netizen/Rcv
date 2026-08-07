@@ -128,16 +128,18 @@ export default function App() {
   };
 
   // Parse SMS & Auto Save
-  const handleParseAndSaveSMS = async (smsText: string): Promise<PaymentRecord | null> => {
+  const handleParseAndSaveSMS = async (smsText: string, isDemo = false): Promise<PaymentRecord | null> => {
     try {
       const res = await fetch('/api/sms/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ smsText }),
+        body: JSON.stringify({ smsText, isDemo }),
       });
       const data = await res.json();
       if (data.success && data.payment) {
-        await handleRefresh();
+        if (!data.isDemo) {
+          await handleRefresh();
+        }
         return data.payment;
       }
       return null;

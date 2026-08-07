@@ -90,8 +90,8 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onSearch }) => {
         <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Verify Your Payment
         </h2>
-        <p className="text-xs sm:text-sm text-slate-600 max-w-xs mx-auto">
-          Enter the last 3 digits of your transaction ID or sender phone number to confirm receipt.
+        <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto">
+          প্রেরকের মোবাইল নম্বরের শেষ ৩ ডিজিট প্রবেশ করুন। শুধুমাত্র শেষ ৩ ডিজিট মিললে পেমেন্ট সফল ও অনুমোদিত হবে।
         </p>
       </div>
 

@@ -385,12 +385,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Payment Table / List */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-emerald-600" />
-            <span>Recorded Payments ({filteredPayments.length})</span>
-          </h3>
-          <span className="text-xs text-slate-500">Live Synced with Firestore</span>
+        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-emerald-600" />
+              <span>Payment History ({filteredPayments.length})</span>
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Complete log of all received payments synced with database.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowClearAllConfirm(true)}
+              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/20"
+              title="Clear all payment history"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Clear All Data (সকল ডাটা ডিলিট করুন)</span>
+            </button>
+          </div>
         </div>
 
         {filteredPayments.length === 0 ? (
