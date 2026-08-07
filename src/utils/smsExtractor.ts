@@ -13,8 +13,8 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   const lowerText = text.toLowerCase();
   const lowerSender = (senderShortcode || '').toLowerCase();
 
-  // 1. Exclude irrelevant SMS (OTP, Failed, Promotional, etc.)
-  const skipKeywords = ['otp', 'verification code', 'secret code', 'failed', 'cancelled', 'insufficient', 'request', 'sent', 'paid to', 'payment to', 'recharge', 'offer', 'bonus'];
+  // 1. Exclude irrelevant SMS (OTP, Failed, Promotional, Outgoing)
+  const skipKeywords = ['otp', 'verification code', 'secret code', 'failed', 'cancelled', 'insufficient', 'request', 'you have sent', 'sent to', 'paid to', 'payment to', 'recharge', 'offer', 'bonus'];
   
   // Check if text indicates a successful payment received
   const isPaymentSuccess = 
@@ -100,16 +100,16 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // 3. Extract Amount
   // Enhanced regex to capture various formats:
-  // Matches: Amount: Tk 500.00, Amount: Tk 480.00, Received Amount: 500, Tk 500, Cash In Received Tk 480, etc.
-  const amountRegex = /(?:Amount|Received Amount|Cash In|Money Received|Tk|TK|tk|BDT)\s*[:.-]?\s*(?:Tk|BDT)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
+  // Matches: Amount: Tk 500.00, Amount: Tk 480.00, Received Amount: 500, Tk 500, Cash In Received Tk 480, ৳500, etc.
+  const amountRegex = /(?:Amount|Received Amount|Cash In|Money Received|Tk|TK|tk|BDT|৳)\s*[:.#-]?\s*(?:Tk|BDT|৳)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
   const amountMatch = text.match(amountRegex);
   
   let amount = 0;
   if (amountMatch && amountMatch[1]) {
     amount = parseFloat(amountMatch[1].replace(/,/g, '')) || 0;
   } else {
-    // Fallback: [Number] Tk/BDT (e.g., 500 Tk, 500.00 TK)
-    const fallbackAmountRegex = /([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:Tk|TK|tk|BDT)/i;
+    // Fallback: [Number] Tk/BDT (e.g., 500 Tk, 500.00 TK, 500 ৳)
+    const fallbackAmountRegex = /([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:Tk|TK|tk|BDT|৳)/i;
     const fallbackMatch = text.match(fallbackAmountRegex);
     if (fallbackMatch && fallbackMatch[1]) {
       amount = parseFloat(fallbackMatch[1].replace(/,/g, '')) || 0;
@@ -117,8 +117,8 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   }
 
   // 4. Extract Transaction ID
-  // Matches: TxnID: 75SD1SNV, TxnID: 75SDCB9M, TrxID 9A8B7C6D5E, TxnID: 7X8Y9Z0A, etc.
-  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx|Txn)\s*[:.-]?\s*([A-Z0-9]{6,16})/i;
+  // Matches: TxnID: 75SD1SNV, TxnID: 75SDCB9M, TrxID 9A8B7C6D5E, TxnID 7X8Y9Z0A, TxID: ..., etc.
+  const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx|Txn|TxID|Tx ID)\s*[:.#-]?\s*([A-Z0-9]{6,16})/i;
   const trxMatch = text.match(trxRegex);
 
   let transactionId = '';
@@ -128,41 +128,25 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
 
   // 5. Extract Sender / Uddokta Number
   let senderNumber = '';
-  // Pattern 1: Search for numbers in "from", "Sender", "Uddokta", "number", "A/C", "Agent", "Customer" patterns
-  const fromMatch = text.match(/(?:from|Sender|Uddokta|number|A\/C|Agent|Customer|From)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
+  // Pattern 1: Search for numbers in "from", "Sender", "Uddokta", "Customer", "A/C", "Agent", "Mobile", "By", "Ref"
+  const fromMatch = text.match(/(?:from|Sender|Uddokta|Customer|A\/C|Agent|Mobile|By|Account|Ref|From|number)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{2,4})/i);
   if (fromMatch && fromMatch[1]) {
     senderNumber = fromMatch[1].trim();
   } else {
-    // Pattern 2: Search for any 11 digit number starting with 01 anywhere in text
-    const genericPhoneMatch = text.match(/(?:\+?88)?(01[3-9][0-9]{8})\b/);
+    // Pattern 2: Search for any 11 digit or masked phone number starting with 01 anywhere in text
+    const genericPhoneMatch = text.match(/(?:\+?88)?(01[3-9][0-9Xx*]{8,11})\b/i);
     if (genericPhoneMatch) {
       senderNumber = genericPhoneMatch[1];
-    }
-  }
-
-  // Clean up sender number to ensure it starts with 01 if it's 11 digits
-  if (senderNumber && senderNumber.length > 11) {
-    const cleanMatch = senderNumber.match(/(01[3-9][0-9]{8})/);
-    if (cleanMatch) senderNumber = cleanMatch[1];
-  }
-
-  // 6. Final Validation - If we can't find a TrxID or Amount, try fallback
-  if (!transactionId || amount <= 0) {
-    if (!transactionId) {
-      const fallbackTrx = text.match(/\b([A-Z0-9]{8,12})\b/);
-      if (fallbackTrx) transactionId = fallbackTrx[1];
-    }
-    
-    if (!transactionId || amount <= 0) {
-       return { success: false, error: 'Could not extract Transaction ID or Amount' };
     }
   }
 
   // Clean up sender number
   if (!senderNumber) senderNumber = "Unknown";
 
+  // Calculate numeric digits for last3DigitsSender to properly match even if phone has mask characters (* or X)
+  const digitsOnlySender = senderNumber.replace(/[^0-9]/g, '');
+  const last3DigitsSender = digitsOnlySender.length >= 3 ? digitsOnlySender.slice(-3) : (senderNumber.slice(-3) || '000');
   const last3DigitsTrx = transactionId.slice(-3);
-  const last3DigitsSender = senderNumber.length >= 3 ? senderNumber.slice(-3) : senderNumber;
 
   // Extract Date & Time
   // Supports formats like: "at 02/08/2026 14:30", "Date: 02/08/2026", "07/08/2026 20:14", "07/08/2026 20:50"

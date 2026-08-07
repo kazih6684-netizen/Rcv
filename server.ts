@@ -92,11 +92,8 @@ app.post('/api/sms/parse', async (req, res) => {
     return res.status(400).json({ success: false, message: 'SMS text is required' });
   }
 
-  // Check if this is a Nagad Demo SMS sample (Rule: Demo SMS are reference only and must NEVER be saved to DB)
-  const isNagadDemoSms = 
-    isExplicitDemo || 
-    smsText.includes('75SD1SNV') || 
-    smsText.includes('75SDCB9M');
+  // Check if this is explicitly marked as demo
+  const isNagadDemoSms = isExplicitDemo;
 
   console.log(`PAYMENT DETECTOR: Incoming SMS from [${sender || 'Unknown'}] (IsDemo: ${isNagadDemoSms})`);
   console.log(`PAYMENT DETECTOR: Content: "${smsText}"`);

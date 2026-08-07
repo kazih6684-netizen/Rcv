@@ -72,12 +72,21 @@ export const ApkDownload: React.FC = () => {
           </ol>
         </div>
         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
-          <h3 className="font-bold text-slate-900 mb-2">MacroDroid সেটআপ নির্দেশিকা (Nagad / bKash / Rocket)</h3>
-          <ol className="text-sm text-slate-600 space-y-2 list-decimal list-inside">
-            <li><strong>Trigger:</strong> MacroDroid-এ <code>SMS Received</code> বেছে নিন।</li>
-            <li><strong>Sender Filter:</strong> <code>Select Number(s)</code> &gt; <code>Contains / Any Number</code> নির্বাচন করুন।</li>
-            <li><strong>Add Senders:</strong> সেখানে <code>NAGAD</code>, <code>16167</code>, <code>bKash</code>, <code>16247</code>, <code>Rocket</code>, <code>Upay</code> লিখে কমা (,) দিয়ে যুক্ত করুন।</li>
-            <li><strong>Action:</strong> <code>HTTP Request (POST)</code> সেটআপ করুন। URL: <code>https://your-domain.com/api/sms/parse</code> এবং Body তে <code>{`{"smsText": "[sms_message]", "sender": "[sms_number]"}`}</code> দিন।</li>
+          <h3 className="font-bold text-slate-900 mb-2">MacroDroid সঠিক সেটআপ নির্দেশিকা (Nagad / bKash / Rocket)</h3>
+          <ol className="text-sm text-slate-600 space-y-2.5 list-decimal list-inside">
+            <li><strong>Trigger:</strong> MacroDroid-এ <code>SMS Received</code> সিলেক্ট করুন।</li>
+            <li>
+              <strong>Sender Filter (সবচেয়ে সহজ নিয়ম):</strong> 
+              <code>Any Number</code> (যেকোনো নাম্বার) সিলেক্ট করে ওকে দিন। 
+              <br/>
+              <span className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded inline-block mt-1 border border-amber-200">
+                ⚠️ নোট: MacroDroid-এ কমা (,) দিয়ে সব নাম্বার একসঙ্গে লিখলে কাজ করে না। কিন্তু আমাদের সার্ভার ব্যাকএন্ড নিজেই অটোমেটিক বিকাশ, নগদ, রকেট শনাক্ত করে এবং ফালতু এসএমএস বাদ দেয়! তাই MacroDroid-এ <b>Any Number</b> দেওয়াই সবচেয়ে ভালো।
+              </span>
+            </li>
+            <li>
+              <strong>অল্টারনেটিভ (Regex ফিল্টার করতে চাইলে):</strong> MacroDroid-এ <code>Select Number</code> এ <code>Enable regular expression matching</code> টিক দিন এবং বক্সে লিখুন: <code>.*(NAGAD|bKash|Rocket|16167|16247|16216).*</code>
+            </li>
+            <li><strong>Action:</strong> <code>HTTP Request (POST)</code> বেছে নিয়ে Server URL এ দিন: <code>https://your-app.up.railway.app/api/sms/parse</code> এবং Body-তে <code>{`{"smsText": "[sms_message]", "sender": "[sms_number]"}`}</code> দিন।</li>
           </ol>
         </div>
       </div>
