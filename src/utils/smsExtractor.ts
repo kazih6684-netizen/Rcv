@@ -16,7 +16,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   // 1. Exclude irrelevant SMS (OTP, Failed, Promotional, etc.)
   const skipKeywords = ['otp', 'verification code', 'secret code', 'failed', 'cancelled', 'insufficient', 'request', 'sent', 'paid to', 'payment to', 'recharge', 'offer', 'bonus'];
   
-  // However, we MUST allow "received" or "Cash In" even if some of these words are present (rare)
+  // Check if text indicates a successful payment received
   const isPaymentSuccess = 
     lowerText.includes('received') || 
     lowerText.includes('cash in') || 
@@ -28,10 +28,11 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     lowerText.includes('uddokta') ||
     lowerText.includes('nagad') ||
     lowerText.includes('successful') ||
-    lowerText.includes('tk');
+    lowerText.includes('tk') ||
+    lowerText.includes('txnid') ||
+    lowerText.includes('trxid');
 
   if (!isPaymentSuccess) {
-    // If it doesn't sound like a "Received" message, check if it's one of the skip keywords
     if (skipKeywords.some(kw => lowerText.includes(kw))) {
       return { success: false, error: 'Not a payment received SMS (OTP/Failed/Promo)' };
     }
@@ -41,12 +42,12 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   let paymentMethod: PaymentMethod | null = null;
 
   // Primary detection by sender shortcode
-  if (lowerSender.includes('bkash')) paymentMethod = 'bKash';
+  if (lowerSender.includes('bkash') || lowerSender === '16247') paymentMethod = 'bKash';
   else if (lowerSender.includes('nagad') || lowerSender === '16167') paymentMethod = 'Nagad';
   else if (lowerSender.includes('rocket') || lowerSender === '16216' || lowerSender.includes('nexuspay')) paymentMethod = 'Rocket';
   else if (lowerSender.includes('upay') || lowerSender === '16268') paymentMethod = 'Upay';
 
-  // Secondary detection by keywords in body
+  // Secondary detection by explicit keywords in body
   if (!paymentMethod) {
     if (lowerText.includes("bkash")) {
       paymentMethod = "bKash";
@@ -59,24 +60,47 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     }
   }
 
-  // Tertiary identification by patterns if name not explicitly mentioned
+  // Tertiary identification by structural signatures if provider name is not explicitly mentioned in the SMS text
   if (!paymentMethod) {
-    if (lowerText.includes("trxid")) {
+    // Nagad SMS Signatures:
+    // - Format 1: "Money Received." + "Amount: Tk ..." + "Sender: ..." + "TxnID: ..."
+    // - Format 2: "Cash In Received." + "Amount: Tk ..." + "Uddokta: ..." + "TxnID: ..."
+    // - Uses "TxnID:" / "TxnID" (bKash uses "TrxID")
+    // - Uses "Uddokta:" or "Sender:" or "Ref:"
+    const hasNagadKeywords = 
+      lowerText.includes("txnid") || 
+      lowerText.includes("txn id") || 
+      lowerText.includes("uddokta") || 
+      lowerText.includes("ref:") ||
+      lowerText.includes("money received") ||
+      lowerText.includes("cash in received");
+
+    const hasBkashKeywords = 
+      lowerText.includes("trxid") || 
+      lowerText.includes("trx id") ||
+      lowerText.includes("bkash");
+
+    const hasRocketKeywords = 
+      lowerText.includes("dutch-bangla") || 
+      lowerText.includes("nexuspay") ||
+      (lowerText.startsWith("tk.") && lowerText.includes("received from"));
+
+    if (hasNagadKeywords && !hasBkashKeywords && !hasRocketKeywords) {
+      paymentMethod = "Nagad";
+    } else if (hasBkashKeywords) {
       paymentMethod = "bKash";
-    } else if (lowerText.includes("txnid") || lowerText.includes("txn id") || lowerText.includes("uddokta") || lowerText.includes("nagad") || lowerText.includes("sender:")) {
-      if (lowerText.includes("rocket") || lowerText.includes("tk.")) {
-        paymentMethod = "Rocket";
-      } else {
-        paymentMethod = "Nagad";
-      }
+    } else if (hasRocketKeywords) {
+      paymentMethod = "Rocket";
+    } else if (lowerText.includes("txnid") || lowerText.includes("uddokta") || lowerText.includes("sender:")) {
+      paymentMethod = "Nagad";
     } else {
-      paymentMethod = "bKash"; // Default
+      paymentMethod = "bKash"; // Default fallback
     }
   }
 
   // 3. Extract Amount
-  // Enhanced regex to capture various formats
-  // Matches: Tk 500, Tk. 500, Tk500, Amount: Tk 500, Received Amount: 500, etc.
+  // Enhanced regex to capture various formats:
+  // Matches: Amount: Tk 500.00, Amount: Tk 480.00, Received Amount: 500, Tk 500, Cash In Received Tk 480, etc.
   const amountRegex = /(?:Amount|Received Amount|Cash In|Money Received|Tk|TK|tk|BDT)\s*[:.-]?\s*(?:Tk|BDT)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i;
   const amountMatch = text.match(amountRegex);
   
@@ -93,7 +117,7 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   }
 
   // 4. Extract Transaction ID
-  // Matches: TrxID 9A8B7C6D5E, TxnID: 7X8Y9Z0A, TxnId: 123456, ID: 12345, Transaction ID: ...
+  // Matches: TxnID: 75SD1SNV, TxnID: 75SDCB9M, TrxID 9A8B7C6D5E, TxnID: 7X8Y9Z0A, etc.
   const trxRegex = /(?:TrxID|TxnID|TXNID|Trx ID|Txn ID|TxnId|Txn Id|Transaction ID|TransactionID|ID|Trx|Txn)\s*[:.-]?\s*([A-Z0-9]{6,16})/i;
   const trxMatch = text.match(trxRegex);
 
@@ -102,10 +126,10 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     transactionId = trxMatch[1].toUpperCase();
   }
 
-  // 5. Extract Sender Number
+  // 5. Extract Sender / Uddokta Number
   let senderNumber = '';
-  // Pattern 1: Search for numbers in "from", "Sender", "number", "A/C", "Uddokta", "Agent", "Customer" patterns
-  const fromMatch = text.match(/(?:from|Sender|number|A\/C|Uddokta|Agent|Customer|From)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
+  // Pattern 1: Search for numbers in "from", "Sender", "Uddokta", "number", "A/C", "Agent", "Customer" patterns
+  const fromMatch = text.match(/(?:from|Sender|Uddokta|number|A\/C|Agent|Customer|From)\s*[:.*-]?\s*(?:\+?88)?(01[3-9][0-9Xx*]{3,11}[0-9]{3,4})/i);
   if (fromMatch && fromMatch[1]) {
     senderNumber = fromMatch[1].trim();
   } else {
@@ -122,9 +146,8 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
     if (cleanMatch) senderNumber = cleanMatch[1];
   }
 
-  // 6. Final Validation - If we can't find a TrxID or Amount, it might not be a valid record
+  // 6. Final Validation - If we can't find a TrxID or Amount, try fallback
   if (!transactionId || amount <= 0) {
-    // Try one last desperate search for anything that looks like a TrxID (alpha-numeric, 8+ chars)
     if (!transactionId) {
       const fallbackTrx = text.match(/\b([A-Z0-9]{8,12})\b/);
       if (fallbackTrx) transactionId = fallbackTrx[1];
@@ -141,13 +164,14 @@ export function parsePaymentSMS(rawSms: string, senderShortcode?: string): SMSPa
   const last3DigitsTrx = transactionId.slice(-3);
   const last3DigitsSender = senderNumber.length >= 3 ? senderNumber.slice(-3) : senderNumber;
 
-  // Extract Date
-  const dateRegex = /(?:at|Date:?)\s*([0-9]{1,2}[\/-][A-Z0-9]{2,4}[\/-][0-9]{2,4}(?:\s*[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s*(?:am|pm|AM|PM)?)?)/i;
+  // Extract Date & Time
+  // Supports formats like: "at 02/08/2026 14:30", "Date: 02/08/2026", "07/08/2026 20:14", "07/08/2026 20:50"
+  const dateRegex = /(?:at|Date:?|^|\s)\s*([0-3]?[0-9][\/-][0-1]?[0-9][\/-][0-9]{2,4}(?:\s+[0-2]?[0-9]:[0-5][0-9](?::[0-5][0-9])?(?:\s*(?:am|pm|AM|PM))?)?)/im;
   const dateMatch = text.match(dateRegex);
 
   const now = new Date();
   const formattedNow = `${now.toLocaleDateString('en-GB')} ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
-  const dateTime = dateMatch && dateMatch[1] ? dateMatch[1] : formattedNow;
+  const dateTime = dateMatch && dateMatch[1] && dateMatch[1].length >= 8 ? dateMatch[1].trim() : formattedNow;
 
   return {
     success: true,
@@ -205,6 +229,27 @@ export function getProviderBrandColor(method: PaymentMethod) {
 
 export const SAMPLE_SMS_TEMPLATES = [
   {
+    provider: 'Nagad' as PaymentMethod,
+    label: 'Nagad Money Received (Tk 500)',
+    sms: `Money Received.
+Amount: Tk 500.00
+Sender: 01819017575
+Ref: N/A
+TxnID: 75SD1SNV
+Balance: Tk 7889.23
+07/08/2026 20:14`,
+  },
+  {
+    provider: 'Nagad' as PaymentMethod,
+    label: 'Nagad Cash In Received (Tk 480)',
+    sms: `Cash In Received.
+Amount: Tk 480.00
+Uddokta: 01940803280
+TxnID: 75SDCB9M
+Balance: 8369.23
+07/08/2026 20:50`,
+  },
+  {
     provider: 'bKash' as PaymentMethod,
     label: 'bKash Payment (Tk 500)',
     sms: 'You have received Tk 500.00 from 01712345678. Fee Tk 0.00. Balance Tk 1500.00. TrxID 9A8B7C650 at 02/08/2026 14:30',
@@ -216,18 +261,13 @@ export const SAMPLE_SMS_TEMPLATES = [
   },
   {
     provider: 'Nagad' as PaymentMethod,
-    label: 'Nagad Payment (Tk 250)',
+    label: 'Nagad Single Line (Tk 250)',
     sms: 'Received Amount: Tk 250.00. Sender: 01911223123. TxnID: 7X8Y9Z123. Date: 02/08/2026 15:10.',
   },
   {
     provider: 'Rocket' as PaymentMethod,
     label: 'Rocket Cash In (Tk 750)',
     sms: 'Tk.750.00 received from 01611223456. TxnID: 3B4C5D456. Date:02-AUG-26 15:12.',
-  },
-  {
-    provider: 'Rocket' as PaymentMethod,
-    label: 'Rocket Received (Tk 200) - NexusPay',
-    sms: 'Tk200.00 received from A/C:***057 Fee:Tk0, Your A/C Balance: Tk12,256.92 TxnId:6791724661 Date:31-JUL-26 09:26:07 pm. Download https://bit.ly/nexuspay',
   },
   {
     provider: 'Upay' as PaymentMethod,
