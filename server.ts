@@ -186,6 +186,32 @@ app.post('/api/payments', async (req, res) => {
   }
 });
 
+// Reset / Clear database (MUST be placed BEFORE /api/payments/:id)
+app.delete('/api/payments/clear-all', async (req, res) => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'payments'));
+    console.log(`CLEAR ALL: Deleting ${querySnapshot.docs.length} payment documents...`);
+    const deletePromises = querySnapshot.docs.map((docSnap) => deleteDoc(doc(db, 'payments', docSnap.id)));
+    await Promise.all(deletePromises);
+    res.json({ success: true, message: 'All payments cleared successfully' });
+  } catch (err) {
+    console.error("Error clearing all payments:", err);
+    res.status(500).json({ success: false, message: 'Failed to clear payments' });
+  }
+});
+
+app.post('/api/payments/clear-all', async (req, res) => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'payments'));
+    const deletePromises = querySnapshot.docs.map((docSnap) => deleteDoc(doc(db, 'payments', docSnap.id)));
+    await Promise.all(deletePromises);
+    res.json({ success: true, message: 'All payments cleared successfully' });
+  } catch (err) {
+    console.error("Error clearing all payments:", err);
+    res.status(500).json({ success: false, message: 'Failed to clear payments' });
+  }
+});
+
 // Delete single payment
 app.delete('/api/payments/:id', async (req, res) => {
   const { id } = req.params;
@@ -194,21 +220,6 @@ app.delete('/api/payments/:id', async (req, res) => {
     res.json({ success: true, message: 'Payment deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to delete payment' });
-  }
-});
-
-// Reset / Clear database
-app.delete('/api/payments/clear-all', async (req, res) => {
-  try {
-    const paymentsDatabase = await fetchAllPayments();
-    for (const p of paymentsDatabase) {
-      if (p.id) {
-        await deleteDoc(doc(db, 'payments', p.id));
-      }
-    }
-    res.json({ success: true, message: 'All payments cleared' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to clear payments' });
   }
 });
 

@@ -54,6 +54,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState<boolean>(false);
+  const [isClearingAll, setIsClearingAll] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'payments' | 'stats' | 'logs'>('payments');
   const [failedLogs, setFailedLogs] = useState<any[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -91,9 +92,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleClearAllConfirm = async () => {
-    const success = await onClearAllPayments();
-    if (success) {
-      setShowClearAllConfirm(false);
+    setIsClearingAll(true);
+    try {
+      const success = await onClearAllPayments();
+      if (success) {
+        setShowClearAllConfirm(false);
+      } else {
+        alert("ডাটা ডিলিট করতে ব্যর্থ হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("ডাটা ডিলিট করার সময় সমস্যা হয়েছে।");
+    } finally {
+      setIsClearingAll(false);
     }
   };
 
@@ -625,16 +636,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setShowClearAllConfirm(false)}
-                className="w-1/2 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                disabled={isClearingAll}
+                className="w-1/2 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-xl"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleClearAllConfirm}
-                className="w-1/2 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
+                disabled={isClearingAll}
+                className="w-1/2 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-xl flex items-center justify-center gap-1.5"
               >
-                Yes, Delete All
+                {isClearingAll ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete All</span>
+                )}
               </button>
             </div>
           </div>

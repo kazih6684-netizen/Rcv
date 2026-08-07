@@ -117,12 +117,25 @@ export default function App() {
       const res = await fetch('/api/payments/clear-all', { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        setPayments([]);
         await handleRefresh();
         return true;
       }
-      return false;
     } catch (err) {
-      console.error('Clear all request failed', err);
+      console.error('Clear all API request failed, attempting direct Firestore delete:', err);
+    }
+
+    // Direct Firestore deletion fallback
+    try {
+      const { db, collection, getDocs, deleteDoc, doc } = await import('./firebase');
+      const querySnapshot = await getDocs(collection(db, 'payments'));
+      const deletePromises = querySnapshot.docs.map((docSnap) => deleteDoc(doc(db, 'payments', docSnap.id)));
+      await Promise.all(deletePromises);
+      setPayments([]);
+      await handleRefresh();
+      return true;
+    } catch (firebaseErr) {
+      console.error('Direct Firestore clear failed:', firebaseErr);
       return false;
     }
   };
