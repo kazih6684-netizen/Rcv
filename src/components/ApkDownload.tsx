@@ -72,13 +72,13 @@ export const ApkDownload: React.FC = () => {
           </ol>
         </div>
         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
-          <h3 className="font-bold text-slate-900 mb-2">Admin Features</h3>
-          <ul className="text-sm text-slate-600 space-y-2 list-disc list-inside">
-            <li>Login with Admin Number to access full controls.</li>
-            <li>Grant SMS permission from the app settings.</li>
-            <li>View device information and connection status.</li>
-            <li>Automatic background syncing of payment SMS.</li>
-          </ul>
+          <h3 className="font-bold text-slate-900 mb-2">MacroDroid সেটআপ নির্দেশিকা (Nagad / bKash / Rocket)</h3>
+          <ol className="text-sm text-slate-600 space-y-2 list-decimal list-inside">
+            <li><strong>Trigger:</strong> MacroDroid-এ <code>SMS Received</code> বেছে নিন।</li>
+            <li><strong>Sender Filter:</strong> <code>Select Number(s)</code> &gt; <code>Contains / Any Number</code> নির্বাচন করুন।</li>
+            <li><strong>Add Senders:</strong> সেখানে <code>NAGAD</code>, <code>16167</code>, <code>bKash</code>, <code>16247</code>, <code>Rocket</code>, <code>Upay</code> লিখে কমা (,) দিয়ে যুক্ত করুন।</li>
+            <li><strong>Action:</strong> <code>HTTP Request (POST)</code> সেটআপ করুন। URL: <code>https://your-domain.com/api/sms/parse</code> এবং Body তে <code>{`{"smsText": "[sms_message]", "sender": "[sms_number]"}`}</code> দিন।</li>
+          </ol>
         </div>
       </div>
     </div>

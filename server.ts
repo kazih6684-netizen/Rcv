@@ -50,12 +50,23 @@ app.post('/api/payments/search', async (req, res) => {
   
   const paymentsDatabase = await fetchAllPayments();
   const matched = paymentsDatabase.filter((pay) => {
-    // Last 3 Digits Verification Key Rule:
-    // Only accept/approve payment if the last 3 digits match either sender phone number or transaction ID
     const senderLast3 = (pay.last3DigitsSender || pay.senderNumber.slice(-3)).toLowerCase();
     const trxLast3 = (pay.last3DigitsTrx || pay.transactionId.slice(-3)).toLowerCase();
-    
-    return senderLast3 === queryStr || trxLast3 === queryStr || senderLast3 === searchLast3 || trxLast3 === searchLast3;
+    const fullSender = pay.senderNumber.toLowerCase();
+    const fullTrx = pay.transactionId.toLowerCase();
+    const rawSmsLower = (pay.rawSms || '').toLowerCase();
+
+    return (
+      senderLast3 === queryStr ||
+      trxLast3 === queryStr ||
+      senderLast3 === searchLast3 ||
+      trxLast3 === searchLast3 ||
+      fullSender.endsWith(queryStr) ||
+      fullTrx.endsWith(queryStr) ||
+      fullSender.includes(queryStr) ||
+      fullTrx.includes(queryStr) ||
+      rawSmsLower.includes(queryStr)
+    );
   });
 
   res.json({
