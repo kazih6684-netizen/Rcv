@@ -39,40 +39,50 @@ app.get('/api/payments', async (req, res) => {
   res.json({ success: true, payments: sorted });
 });
 
-// Search payments by last 3 digits or full transaction/sender
+// Search payments by exact last 3 digits of sender phone or transaction ID
 app.post('/api/payments/search', async (req, res) => {
   const { digits } = req.body;
   if (!digits || typeof digits !== 'string') {
     return res.status(400).json({ success: false, message: 'Digits string is required' });
   }
-  const queryStr = digits.trim().toLowerCase();
-  const searchLast3 = queryStr.slice(-3); // Extract last 3 digits as verification key
-  
-  const paymentsDatabase = await fetchAllPayments();
-  const matched = paymentsDatabase.filter((pay) => {
-    const senderLast3 = (pay.last3DigitsSender || pay.senderNumber.slice(-3)).toLowerCase();
-    const trxLast3 = (pay.last3DigitsTrx || pay.transactionId.slice(-3)).toLowerCase();
-    const fullSender = pay.senderNumber.toLowerCase();
-    const fullTrx = pay.transactionId.toLowerCase();
-    const rawSmsLower = (pay.rawSms || '').toLowerCase();
 
-    return (
-      senderLast3 === queryStr ||
-      trxLast3 === queryStr ||
-      senderLast3 === searchLast3 ||
-      trxLast3 === searchLast3 ||
-      fullSender.endsWith(queryStr) ||
-      fullTrx.endsWith(queryStr) ||
-      fullSender.includes(queryStr) ||
-      fullTrx.includes(queryStr) ||
-      rawSmsLower.includes(queryStr)
-    );
+  const cleanInput = digits.trim();
+  const numericOnlyQuery = cleanInput.replace(/\D/g, '');
+  const queryLast3Digits = numericOnlyQuery.length >= 3 
+    ? numericOnlyQuery.slice(-3) 
+    : cleanInput.toLowerCase().slice(-3);
+
+  const paymentsDatabase = await fetchAllPayments();
+
+  const matched = paymentsDatabase.filter((pay) => {
+    // 1. Extract numeric-only sender digits and get exact last 3 digits of SMS sender phone
+    const senderNumericOnly = (pay.senderNumber || '').replace(/\D/g, '');
+    const smsSenderLast3 = senderNumericOnly.length >= 3
+      ? senderNumericOnly.slice(-3)
+      : (pay.last3DigitsSender || '').replace(/\D/g, '').slice(-3);
+
+    // 2. Extract transaction ID last 3 digits
+    const smsTrxClean = (pay.transactionId || '').trim().toLowerCase();
+    const smsTrxLast3 = (pay.last3DigitsTrx || smsTrxClean.slice(-3)).toLowerCase();
+
+    // STRICT MATCHING RULES (No partial includes() on phone numbers):
+    // Rule A: Exact match on last 3 digits of sender phone number
+    const senderLast3Match = Boolean(smsSenderLast3 && queryLast3Digits && smsSenderLast3 === queryLast3Digits);
+
+    // Rule B: Exact match on full 11-digit sender phone number
+    const senderFullMatch = Boolean(numericOnlyQuery.length >= 11 && senderNumericOnly === numericOnlyQuery);
+
+    // Rule C: Exact match on last 3 digits or full Transaction ID
+    const trxLast3Match = Boolean(smsTrxLast3 && queryLast3Digits && smsTrxLast3 === queryLast3Digits);
+    const trxFullMatch = Boolean(smsTrxClean && cleanInput.toLowerCase() && smsTrxClean === cleanInput.toLowerCase());
+
+    return senderLast3Match || senderFullMatch || trxLast3Match || trxFullMatch;
   });
 
   res.json({
     success: true,
-    query: queryStr,
-    searchLast3,
+    query: cleanInput,
+    searchLast3: queryLast3Digits,
     count: matched.length,
     matchedPayments: matched,
   });

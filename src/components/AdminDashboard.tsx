@@ -74,13 +74,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchesProvider =
       selectedProvider === 'all' || p.paymentMethod === selectedProvider;
     const q = searchQuery.toLowerCase().trim();
+    if (!q) return matchesProvider;
+
+    const qDigits = q.replace(/\D/g, '');
+    const qLast3 = qDigits.length >= 3 ? qDigits.slice(-3) : q.slice(-3);
+
+    const senderNumeric = p.senderNumber.replace(/\D/g, '');
+    const senderLast3 = senderNumeric.length >= 3 ? senderNumeric.slice(-3) : p.last3DigitsSender.toLowerCase();
+    const trxLast3 = p.last3DigitsTrx.toLowerCase();
+
     const matchesQuery =
-      !q ||
-      p.last3DigitsTrx.toLowerCase().includes(q) ||
-      p.last3DigitsSender.toLowerCase().includes(q) ||
-      p.transactionId.toLowerCase().includes(q) ||
-      p.senderNumber.toLowerCase().includes(q) ||
-      p.amount.toString().includes(q);
+      senderLast3 === qLast3 ||
+      trxLast3 === qLast3 ||
+      p.transactionId.toLowerCase() === q ||
+      p.senderNumber.toLowerCase().endsWith(q) ||
+      p.senderNumber.toLowerCase() === q ||
+      p.amount.toString() === q;
     return matchesProvider && matchesQuery;
   });
 
